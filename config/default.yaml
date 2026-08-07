@@ -1,0 +1,28 @@
+# Cau hinh mac dinh cua Local AI Gateway.
+# Moi gia tri o day co the bi override boi bien moi truong voi prefix
+# LOCAL_AI_GATEWAY_ (vi du LOCAL_AI_GATEWAY_OLLAMA__MODEL=qwen3.5:9b),
+# hoac bang cach tro toi mot file config khac qua LOCAL_AI_GATEWAY_CONFIG.
+
+provider: ollama
+
+ollama:
+  endpoint: http://localhost:11434
+  model: qwen3.5:9b
+
+# Timeout mac dinh (giay) neu budget khong tu dinh nghia rieng.
+timeout_seconds: 60
+
+retry:
+  max_attempts: 3
+  backoff_base_seconds: 0.5
+
+concurrency:
+  # So request duoc phep goi provider dong thoi. Mac dinh = 1 vi VRAM 12GB
+  # cua RTX 4080 rat de tran neu chay song song nhieu request context lon
+  # tren cung mot model 9.7B. Tang len neu do duoc con du VRAM.
+  max_parallel_requests: 1
+
+logging:
+  level: INFO
+  # Chi bat true khi dev/debug local - se ghi ca noi dung task/context/response.
+  debug_log_content: false

@@ -1,0 +1,66 @@
+# Dinh nghia cac execution budget (L1/L2/L3).
+# Them budget moi = them 1 entry o day, KHONG can sua code.
+#
+# Ghi chu ve num_ctx: RTX 4080 co 12GB VRAM, model qwen3.5:9b (Q4_K_M)
+# chiem ~6.6GB trong luong. KV cache tang theo num_ctx, nen cac gia tri
+# duoi day duoc chon o muc an toan (con du dia cho weights + overhead),
+# khong dung toi context toi da 262144 ma model ho tro. Tune lai neu do
+# thuc te thay con du/thieu VRAM.
+
+budgets:
+  L1:
+    description: >
+      Nhanh, deterministic, dung cho tac vu don gian: phan loai, trich xuat,
+      tra loi ngan gon khong can suy luan sau.
+    timeout_seconds: 20
+    options:
+      system_prompt: >
+        Ban la mot trợ lý xử lý nhanh. Trả lời ngắn gọn, chính xác, đi thẳng
+        vào trọng tâm, không giải thích dài dòng.
+      temperature: 0.1
+      top_p: 0.8
+      top_k: 20
+      repeat_penalty: 1.1
+      num_predict: 256
+      num_ctx: 4096
+      seed: 42
+      stop: []
+      # qwen3.5 la model "thinking": neu bat thinking, no de tieu het
+      # num_predict cho phan suy nghi noi bo va khong con token cho cau tra
+      # loi. L1 uu tien toc do nen tat thinking.
+      think: false
+
+  L2:
+    description: >
+      Can bang giua toc do va chat luong: tom tat file, refactor vua phai,
+      giai thich code.
+    timeout_seconds: 60
+    options:
+      system_prompt: >
+        Bạn là một kỹ sư phần mềm hỗ trợ Claude Code. Đọc kỹ ngữ cảnh được
+        cung cấp, suy nghĩ cẩn thận trước khi trả lời.
+      temperature: 0.4
+      top_p: 0.9
+      top_k: 40
+      repeat_penalty: 1.1
+      num_predict: 1024
+      num_ctx: 12288
+      stop: []
+
+  L3:
+    description: >
+      Chat luong cao nhat, context lon: doc nhieu file, phan tich kien truc,
+      len ke hoach implement, tim bug candidate.
+    timeout_seconds: 180
+    options:
+      system_prompt: >
+        Bạn là một kiến trúc sư phần mềm cấp cao. Phân tích kỹ lưỡng, xem xét
+        nhiều khía cạnh (kiến trúc, edge case, rủi ro) trước khi kết luận.
+        Khi được yêu cầu trả về JSON, hãy đảm bảo cấu trúc chính xác.
+      temperature: 0.6
+      top_p: 0.95
+      top_k: 60
+      repeat_penalty: 1.05
+      num_predict: 4096
+      num_ctx: 24576
+      stop: []
