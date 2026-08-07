@@ -13,6 +13,7 @@ from local_ai_gateway.config.settings import (
     RetryConfig,
 )
 from local_ai_gateway.domain.exceptions import ConfigurationError, ProviderUnavailableError
+from local_ai_gateway.domain.file_context import FileContextResolver
 from local_ai_gateway.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
 from local_ai_gateway.infra.logging import InvocationLogger
 
@@ -30,6 +31,7 @@ class FakeProvider:
         self.call_count = 0
         self.concurrent_calls = 0
         self.max_concurrent_calls = 0
+        self.last_prompt: str | None = None
 
     @property
     def provider_name(self) -> str:
@@ -41,6 +43,7 @@ class FakeProvider:
 
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         self.call_count += 1
+        self.last_prompt = prompt
         self.concurrent_calls += 1
         self.max_concurrent_calls = max(self.max_concurrent_calls, self.concurrent_calls)
         try:
@@ -78,12 +81,18 @@ def _config(max_attempts: int = 1, max_parallel: int = 1) -> AppConfig:
     )
 
 
-def _use_case(provider: FakeProvider, config: AppConfig, profiles: dict[str, BudgetProfile]) -> CallLocalUseCase:
+def _use_case(
+    provider: FakeProvider,
+    config: AppConfig,
+    profiles: dict[str, BudgetProfile],
+    file_context_resolver: FileContextResolver | None = None,
+) -> CallLocalUseCase:
     return CallLocalUseCase(
         provider=provider,
         config=config,
         budget_profiles=profiles,
         invocation_logger=InvocationLogger(logging.getLogger("test.invocation")),
+        file_context_resolver=file_context_resolver,
     )
 
 
@@ -192,3 +201,34 @@ async def test_concurrency_semaphore_limits_parallel_provider_calls():
     )
 
     assert provider.max_concurrent_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_file_paths_are_merged_into_context_sent_to_provider(tmp_path):
+    f = tmp_path / "note.txt"
+    f.write_text("noi dung tu file")
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+
+    provider = FakeProvider()
+    use_case = _use_case(provider, _config(), {"L2": _profile()}, file_context_resolver=resolver)
+
+    result = await use_case.execute(
+        CallLocalRequest(task="tom tat", budget="L2", file_paths=[str(f)])
+    )
+
+    assert result.success is True
+    assert "noi dung tu file" in (provider.last_prompt or "")
+    assert result.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_file_paths_without_configured_resolver_warns_disabled():
+    provider = FakeProvider()
+    use_case = _use_case(provider, _config(), {"L2": _profile()})  # resolver mac dinh: allowed_roots=[]
+
+    result = await use_case.execute(
+        CallLocalRequest(task="tom tat", budget="L2", file_paths=["D:/khong/duoc/doc.txt"])
+    )
+
+    assert result.success is True
+    assert any(w.startswith("file_access_disabled") for w in result.warnings)

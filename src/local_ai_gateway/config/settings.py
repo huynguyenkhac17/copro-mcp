@@ -54,6 +54,26 @@ class LoggingConfig(BaseModel):
     debug_log_content: bool = False
 
 
+class FileAccessConfig(BaseModel):
+    """Cho phep call_local doc file truc tiep qua tham so file_paths thay vi
+    Claude phai paste noi dung. Mac dinh allowed_roots rong = tinh nang TAT
+    (fail-closed) - phai cau hinh ro thi moi doc duoc file nao.
+    """
+
+    allowed_roots: list[str] = Field(default_factory=list)
+    max_file_bytes: int = 200_000
+    max_total_bytes: int = 800_000
+
+
+class CacheConfig(BaseModel):
+    """Cache response cua provider theo (prompt cuoi cung + options), giup
+    khong tra gia inference/GPU lap lai cho cung mot cau hoi."""
+
+    enabled: bool = True
+    max_entries: int = 256
+    ttl_seconds: float | None = 3600
+
+
 class AppConfig(BaseSettings):
     """Cau hinh goc. Nguon uu tien (cao -> thap):
     init kwargs > bien moi truong that (LOCAL_AI_GATEWAY_..., nested bang
@@ -74,6 +94,8 @@ class AppConfig(BaseSettings):
     retry: RetryConfig = Field(default_factory=RetryConfig)
     concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    file_access: FileAccessConfig = Field(default_factory=FileAccessConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
 
     @classmethod
     def settings_customise_sources(

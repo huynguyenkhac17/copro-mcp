@@ -54,3 +54,4 @@ class ProviderResponse(BaseModel):
     latency_ms: float
     tokens_used: int | None = None
     finish_reason: str | None = None
+    from_cache: bool = False

@@ -26,3 +26,18 @@ logging:
   level: INFO
   # Chi bat true khi dev/debug local - se ghi ca noi dung task/context/response.
   debug_log_content: false
+
+file_access:
+  # Danh sach thu muc goc duoc phep doc qua tham so file_paths cua call_local.
+  # Rong = tinh nang TAT (an toan mac dinh). Vi du bat cho 1 project:
+  #   allowed_roots: ["D:/project/mcp"]
+  allowed_roots: []
+  max_file_bytes: 200000
+  max_total_bytes: 800000
+
+cache:
+  # Cache response theo (prompt cuoi cung da build + options) de khong tra
+  # gia inference/GPU lap lai cho cung mot cau hoi/file.
+  enabled: true
+  max_entries: 256
+  ttl_seconds: 3600

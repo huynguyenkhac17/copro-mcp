@@ -11,6 +11,7 @@ retry/timeout ra sao) deu nam o application/domain/provider layer.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
@@ -20,6 +21,7 @@ from local_ai_gateway.application.call_local_use_case import CallLocalUseCase
 from local_ai_gateway.application.dto import CallLocalRequest, CallLocalResult
 from local_ai_gateway.config.settings import AppConfig, load_budget_profiles
 from local_ai_gateway.domain.exceptions import LocalAIGatewayError
+from local_ai_gateway.domain.file_context import FileContextResolver
 from local_ai_gateway.infra.logging import InvocationLogger, configure_logging, get_logger
 from local_ai_gateway.providers.registry import ProviderFactory
 
@@ -35,11 +37,17 @@ def _build_use_case(config: AppConfig) -> CallLocalUseCase:
         get_logger("local_ai_gateway.invocation"),
         debug_log_content=config.logging.debug_log_content,
     )
+    file_context_resolver = FileContextResolver(
+        allowed_roots=[Path(root) for root in config.file_access.allowed_roots],
+        max_file_bytes=config.file_access.max_file_bytes,
+        max_total_bytes=config.file_access.max_total_bytes,
+    )
     return CallLocalUseCase(
         provider=provider,
         config=config,
         budget_profiles=budget_profiles,
         invocation_logger=invocation_logger,
+        file_context_resolver=file_context_resolver,
     )
 
 
@@ -61,13 +69,19 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "(doc nhieu file, tom tat, tim bug candidate) hoac tac vu du "
             f"'nang' de dang goi ra ngoai. Budget hien co: {budget_names}. "
             "output_format='json' se yeu cau model tra ve JSON (co the kem "
-            "json_schema de goi y cau truc)."
+            "json_schema de goi y cau truc). Neu can model doc noi dung mot "
+            "so file, uu tien dung file_paths (server tu doc truc tiep) thay "
+            "vi paste noi dung vao context - tiet kiem token hon; can server "
+            "duoc cau hinh cho phep thu muc do (xem warning "
+            "'file_access_disabled' neu chua bat). Ket qua co truong 'cached' "
+            "bao co phai tra loi da co san tu lan goi truoc hay khong."
         ),
     )
     async def call_local(
         task: str,
         budget: str = "L2",
         context: str | None = None,
+        file_paths: list[str] | None = None,
         output_format: str = "text",
         json_schema: dict[str, Any] | None = None,
     ) -> CallLocalResult:
@@ -76,6 +90,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                 task=task,
                 budget=budget,
                 context=context,
+                file_paths=file_paths,
                 output_format=output_format,  # type: ignore[arg-type]
                 json_schema=json_schema,
             )

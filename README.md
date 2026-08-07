@@ -56,15 +56,18 @@ mcp/
 │   │   ├── models.py         # GenerationOptions, ProviderResponse, BudgetProfile
 │   │   ├── exceptions.py
 │   │   ├── prompt_builder.py # ghép task+context, cắt context nếu vượt num_ctx
-│   │   └── output_parser.py  # parse/repair JSON, validate schema optional
+│   │   ├── output_parser.py  # parse/repair JSON, validate schema optional
+│   │   └── file_context.py   # đọc file trực tiếp qua file_paths (allowlist + size limit)
 │   ├── providers/
-│   │   ├── registry.py       # ProviderFactory
+│   │   ├── registry.py       # ProviderFactory (+ bọc CachingProvider nếu cache.enabled)
+│   │   ├── caching_provider.py # decorator cache response quanh LLMProvider bất kỳ
 │   │   └── ollama_provider.py
 │   ├── config/
 │   │   └── settings.py       # AppConfig (Pydantic Settings) + load budgets.yaml
 │   └── infra/
 │       ├── logging.py        # structured logger, ghi stderr (không phá stdio)
-│       └── retry.py          # backoff cho lỗi transient
+│       ├── retry.py          # backoff cho lỗi transient
+│       └── cache.py          # InMemoryTTLCache (TTL + LRU) dùng chung
 └── tests/
     ├── unit/         # mock LLMProvider, không cần Ollama chạy
     └── integration/  # gọi Ollama thật, tự skip nếu Ollama không chạy
@@ -127,6 +130,45 @@ Giá trị `num_ctx` được chọn ở mức an toàn cho VRAM 12GB (weights ~
 KV cache), không dùng tới context tối đa 262144 mà model hỗ trợ — có thể
 tune lại trong `config/budgets.yaml` nếu đo được còn dư/thiếu VRAM.
 
+### Đọc file trực tiếp (`file_paths`)
+
+Thay vì Claude tự đọc file rồi paste nội dung vào `context` (tốn token
+truyền qua MCP), server có thể tự đọc file từ đường dẫn tuyệt đối được chỉ
+định — Claude chỉ cần gửi path. Mặc định tính năng **tắt** (an toàn trước):
+phải khai báo rõ thư mục được phép đọc trong `config/default.yaml`:
+
+```yaml
+file_access:
+  allowed_roots: ["D:/project/mcp"]   # rong = tat
+  max_file_bytes: 200000              # gioi han moi file
+  max_total_bytes: 800000             # gioi han tong cho 1 lan goi
+```
+
+Mọi lỗi (path ngoài allowlist, path traversal, file không tồn tại, quá lớn,
+không decode được UTF-8) đều **không throw lỗi cứng** — file đó bị bỏ qua và
+ghi warning cụ thể (`file_access_denied:...`, `file_not_found:...`, ...)
+trong `CallLocalResult.warnings`, các file hợp lệ khác vẫn được xử lý bình
+thường.
+
+### Cache response
+
+Mỗi lần gọi, response được cache theo hash(prompt cuối cùng đã build +
+options + provider + model) — cache tự invalidate khi nội dung file/context
+hoặc câu hỏi thay đổi, không cần theo dõi mtime riêng. Tránh trả giá GPU +
+thời gian inference khi hỏi lại đúng nội dung (ví dụ Claude gọi lại
+`call_local` với cùng file/task nhiều lần trong một phiên làm việc). Cache
+sống trong bộ nhớ tiến trình (mất khi server restart), cấu hình trong
+`config/default.yaml`:
+
+```yaml
+cache:
+  enabled: true
+  max_entries: 256      # LRU eviction khi vuot
+  ttl_seconds: 3600      # null = khong het han
+```
+
+`CallLocalResult.cached` cho biết kết quả có phải lấy từ cache hay không.
+
 ## Đăng ký vào Claude Code
 
 Server đã cài dạng editable nên có sẵn console script
@@ -156,11 +198,12 @@ Claude Code sẽ chạy code mới nhất mỗi lần khởi động server.
 
 ```
 call_local(
-    task: str,                 # bắt buộc — mô tả việc cần làm
-    budget: str = "L2",        # "L1" | "L2" | "L3" (hoặc budget tự thêm)
-    context: str | None,       # nội dung/code cần model đọc
+    task: str,                    # bắt buộc — mô tả việc cần làm
+    budget: str = "L2",           # "L1" | "L2" | "L3" (hoặc budget tự thêm)
+    context: str | None,          # nội dung/code cần model đọc
+    file_paths: list[str] | None, # đường dẫn để server tự đọc trực tiếp
     output_format: "text" | "json" = "text",
-    json_schema: dict | None,  # gợi ý cấu trúc JSON mong muốn (optional)
+    json_schema: dict | None,     # gợi ý cấu trúc JSON mong muốn (optional)
 )
 ```
 
@@ -176,6 +219,7 @@ Kết quả trả về (`CallLocalResult`):
   "budget_used": "L2",
   "latency_ms": 1234.5,
   "tokens_used": 256,
+  "cached": false,
   "warnings": [],
   "error": null
 }

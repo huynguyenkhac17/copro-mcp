@@ -16,6 +16,9 @@ from collections.abc import Callable
 from local_ai_gateway.config.settings import AppConfig
 from local_ai_gateway.domain.exceptions import ConfigurationError
 from local_ai_gateway.domain.interfaces import LLMProvider
+from local_ai_gateway.domain.models import ProviderResponse
+from local_ai_gateway.infra.cache import InMemoryTTLCache
+from local_ai_gateway.providers.caching_provider import CachingProvider
 from local_ai_gateway.providers.ollama_provider import OllamaProvider
 
 ProviderBuilder = Callable[[AppConfig], LLMProvider]
@@ -44,4 +47,13 @@ class ProviderFactory:
                 f"Provider '{self._config.provider}' chua duoc dang ky. "
                 f"Cac provider hien co: {available}"
             )
-        return builder(self._config)
+        provider = builder(self._config)
+
+        if self._config.cache.enabled:
+            cache: InMemoryTTLCache[ProviderResponse] = InMemoryTTLCache(
+                max_entries=self._config.cache.max_entries,
+                ttl_seconds=self._config.cache.ttl_seconds,
+            )
+            provider = CachingProvider(provider, cache)
+
+        return provider

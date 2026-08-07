@@ -13,6 +13,7 @@ import time
 from local_ai_gateway.application.dto import CallLocalRequest, CallLocalResult
 from local_ai_gateway.config.settings import AppConfig
 from local_ai_gateway.domain.exceptions import ConfigurationError, LocalAIGatewayError
+from local_ai_gateway.domain.file_context import FileContextResolver
 from local_ai_gateway.domain.interfaces import LLMProvider
 from local_ai_gateway.domain.models import BudgetProfile
 from local_ai_gateway.domain.output_parser import OutputParser
@@ -30,6 +31,7 @@ class CallLocalUseCase:
         invocation_logger: InvocationLogger,
         prompt_builder: PromptBuilder | None = None,
         output_parser: OutputParser | None = None,
+        file_context_resolver: FileContextResolver | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
@@ -37,6 +39,9 @@ class CallLocalUseCase:
         self._logger = invocation_logger
         self._prompt_builder = prompt_builder or PromptBuilder()
         self._output_parser = output_parser or OutputParser()
+        self._file_context_resolver = file_context_resolver or FileContextResolver(
+            allowed_roots=[]
+        )
         # GPU 12GB de tran neu nhieu request chay song song tren cung 1 model
         # context lon -> gioi han so luong goi provider dong thoi.
         self._semaphore = asyncio.Semaphore(config.concurrency.max_parallel_requests)
@@ -44,9 +49,18 @@ class CallLocalUseCase:
     async def execute(self, request: CallLocalRequest) -> CallLocalResult:
         profile = self._resolve_budget(request.budget)
 
+        file_warnings: list[str] = []
+        combined_context = request.context
+        if request.file_paths:
+            file_result = self._file_context_resolver.resolve(request.file_paths)
+            file_warnings = file_result.warnings
+            combined_context = "\n\n".join(
+                part for part in (request.context, file_result.text) if part
+            )
+
         built = self._prompt_builder.build(
             task=request.task,
-            context=request.context,
+            context=combined_context,
             profile=profile,
             output_format=request.output_format,
             json_schema=request.json_schema,
@@ -113,7 +127,7 @@ class CallLocalUseCase:
                 error=str(exc),
             )
 
-        warnings = list(built.warnings)
+        warnings = [*file_warnings, *built.warnings]
         content: object = response.raw_text
 
         if request.output_format == "json":
@@ -141,6 +155,7 @@ class CallLocalUseCase:
             budget_used=request.budget,
             latency_ms=response.latency_ms,
             tokens_used=response.tokens_used,
+            cached=response.from_cache,
             warnings=warnings,
             error=None,
         )
