@@ -1,12 +1,12 @@
-"""Registry: anh xa ten provider (tu config) sang class implement
-LLMProvider.
+"""Registry: maps provider name (from config) to the LLMProvider
+implementing class.
 
-Them provider moi (vLLM, OpenAI, Gemini, ...):
-    1. Viet 1 class trong providers/ implement LLMProvider.generate(...)
-    2. Dang ky class do o _REGISTRY (hoac goi register_provider tu ngoai)
-    3. Them block config tuong ung trong default.yaml
+To add a new provider (vLLM, OpenAI, Gemini, ...):
+    1. Write a class in providers/ implementing LLMProvider.generate(...)
+    2. Register that class in _REGISTRY (or call register_provider externally)
+    3. Add the corresponding config block in default.yaml
 
-Khong can sua application/domain/mcp layer.
+No changes needed in application/domain/mcp layers.
 """
 
 from __future__ import annotations
@@ -42,10 +42,10 @@ class ProviderFactory:
     def create(self) -> LLMProvider:
         builder = _REGISTRY.get(self._config.provider)
         if builder is None:
-            available = ", ".join(sorted(_REGISTRY)) or "(khong co provider nao dang ky)"
+            available = ", ".join(sorted(_REGISTRY)) or "(no registered providers)"
             raise ConfigurationError(
-                f"Provider '{self._config.provider}' chua duoc dang ky. "
-                f"Cac provider hien co: {available}"
+                f"Provider '{self._config.provider}' is not registered. "
+                f"Available providers: {available}"
             )
         provider = builder(self._config)
 

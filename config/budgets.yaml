@@ -1,17 +1,16 @@
-# Dinh nghia cac execution budget (L1/L2/L3).
-# Them budget moi = them 1 entry o day, KHONG can sua code.
+# Execution budgets definitions (L1/L2/L3).
+# Add new budget = add 1 entry here, NO code changes needed.
 #
-# Ghi chu ve num_ctx: RTX 4080 co 12GB VRAM, model qwen3.5:9b (Q4_K_M)
-# chiem ~6.6GB trong luong. KV cache tang theo num_ctx, nen cac gia tri
-# duoi day duoc chon o muc an toan (con du dia cho weights + overhead),
-# khong dung toi context toi da 262144 ma model ho tro. Tune lai neu do
-# thuc te thay con du/thieu VRAM.
+# Note on num_ctx: For limited VRAM hardware, large models (e.g. 9B parameters)
+# take up significant memory. KV cache increases with num_ctx, so the values
+# below are chosen conservatively to ensure stability without exhausting VRAM.
+# You can tune these up if you monitor that you have enough free memory.
 
 budgets:
   L1:
     description: >
-      Nhanh, deterministic, dung cho tac vu don gian: phan loai, trich xuat,
-      tra loi ngan gon khong can suy luan sau.
+      Fast, deterministic, used for simple tasks: categorization, extraction,
+      short answers without deep reasoning.
     timeout_seconds: 20
     options:
       system_prompt: >

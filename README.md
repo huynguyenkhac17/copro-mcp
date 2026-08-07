@@ -126,7 +126,7 @@ set LOCAL_AI_GATEWAY_OLLAMA__MODEL=qwen3-coder:8b
 > thinking (`think: false`) để đảm bảo luôn có câu trả lời trong ngân sách
 > token thấp.
 
-Giá trị `num_ctx` được chọn ở mức an toàn cho VRAM 12GB (weights ~6.6GB +
+Giá trị `num_ctx` được chọn ở mức an toàn cho phần cứng hạn chế VRAM (weights ~6.6GB +
 KV cache), không dùng tới context tối đa 262144 mà model hỗ trợ — có thể
 tune lại trong `config/budgets.yaml` nếu đo được còn dư/thiếu VRAM.
 
@@ -260,7 +260,7 @@ Không cần sửa `application/`, `domain/`, hay `server.py`.
   (`infra/logging.py`), không bao giờ ghi ra stdout vì stdout dành riêng
   cho giao thức MCP.
 - Concurrency mặc định giới hạn 1 request gọi provider cùng lúc
-  (`concurrency.max_parallel_requests`) để tránh tràn VRAM 12GB khi chạy
-  nhiều request context lớn song song.
+  (`concurrency.max_parallel_requests`) để tránh tràn VRAM trên phần cứng hạn chế
+  khi chạy nhiều request context lớn song song.
 - Log invocation mặc định **không ghi nội dung** task/context/response,
   chỉ ghi độ dài — bật `logging.debug_log_content=true` khi cần debug local.

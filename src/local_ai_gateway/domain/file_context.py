@@ -1,12 +1,12 @@
-"""Doc noi dung file truc tiep tu duong dan duoc chi dinh, thay vi bat Claude
-phai paste noi dung qua MCP protocol - tiet kiem token phia Claude.
+"""Reads file contents directly from specified paths, instead of making Claude
+paste content via MCP protocol - saves tokens on Claude's side.
 
-Trai nguoc voi PromptBuilder (thuan xu ly text), service nay dung I/O that
-nhung van la logic nghiep vu cua he thong (chinh sach bao mat file access)
-nen dat cung nhom domain, khong phai infra.
+Unlike PromptBuilder (pure text processing), this service uses real I/O
+but is still part of the system's business logic (file access security policy)
+so it is placed in the domain group, not infra.
 
-Trietly graceful-degradation: KHONG BAO GIO raise vi mot path loi - chi bo
-qua path do va tra warning ro rang, giong PromptBuilder/OutputParser.
+Strictly graceful-degradation: NEVER raise an exception due to a bad path - just
+skip that path and return a clear warning, similar to PromptBuilder/OutputParser.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ class FileContextResolver:
             return ResolvedFileContext(
                 text="",
                 warnings=[
-                    "file_access_disabled: cau hinh file_access.allowed_roots "
-                    "de bat tinh nang doc file truc tiep"
+                    "file_access_disabled: configure file_access.allowed_roots "
+                    "to enable direct file reading features"
                 ],
             )
 

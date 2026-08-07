@@ -1,8 +1,8 @@
-"""Load cau hinh: default.yaml (+ env override) va budgets.yaml.
+"""Loads config: default.yaml (+ env override) and budgets.yaml.
 
-AppConfig duoc load MOT LAN luc server khoi dong (server.py), sau do duoc
-truyen xuong duoi dang tham so constructor (dependency injection) - khong
-dung bien module-level global cho state nay.
+AppConfig is loaded ONCE at server startup (server.py), then passed
+down as a constructor parameter (dependency injection) - do not use
+module-level global variables for this state.
 """
 
 from __future__ import annotations
@@ -55,9 +55,9 @@ class LoggingConfig(BaseModel):
 
 
 class FileAccessConfig(BaseModel):
-    """Cho phep call_local doc file truc tiep qua tham so file_paths thay vi
-    Claude phai paste noi dung. Mac dinh allowed_roots rong = tinh nang TAT
-    (fail-closed) - phai cau hinh ro thi moi doc duoc file nao.
+    """Allows call_local to read files directly via the file_paths parameter instead
+    of Claude pasting content. Default allowed_roots is empty = feature DISABLED
+    (fail-closed) - must be explicitly configured to read any files.
     """
 
     allowed_roots: list[str] = Field(default_factory=list)
@@ -66,8 +66,8 @@ class FileAccessConfig(BaseModel):
 
 
 class CacheConfig(BaseModel):
-    """Cache response cua provider theo (prompt cuoi cung + options), giup
-    khong tra gia inference/GPU lap lai cho cung mot cau hoi."""
+    """Caches provider responses by (final prompt + options), avoiding repeated
+    inference/GPU costs for the exact same question."""
 
     enabled: bool = True
     max_entries: int = 256
@@ -75,9 +75,9 @@ class CacheConfig(BaseModel):
 
 
 class AppConfig(BaseSettings):
-    """Cau hinh goc. Nguon uu tien (cao -> thap):
-    init kwargs > bien moi truong that (LOCAL_AI_GATEWAY_..., nested bang
-    '__') > file .env o repo root > default.yaml.
+    """Root configuration. Priority sources (high -> low):
+    init kwargs > real environment variables (LOCAL_AI_GATEWAY_..., nested with
+    '__') > .env file in repo root > default.yaml.
     """
 
     model_config = SettingsConfigDict(
@@ -116,18 +116,18 @@ class AppConfig(BaseSettings):
 
 
 def load_budget_profiles(path: Path | None = None) -> dict[str, BudgetProfile]:
-    """Doc budgets.yaml va tra ve {ten_budget: BudgetProfile}."""
+    """Reads budgets.yaml and returns {budget_name: BudgetProfile}."""
 
     resolved = path or _resolve_path(BUDGETS_PATH_ENV_VAR, _DEFAULT_BUDGETS_PATH)
     if not resolved.exists():
-        raise ConfigurationError(f"Khong tim thay file budgets config: {resolved}")
+        raise ConfigurationError(f"Budgets config file not found: {resolved}")
 
     with open(resolved, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
     budgets_raw = raw.get("budgets") or {}
     if not budgets_raw:
-        raise ConfigurationError(f"File budgets config rong hoac sai dinh dang: {resolved}")
+        raise ConfigurationError(f"Budgets config file empty or malformed: {resolved}")
 
     profiles: dict[str, BudgetProfile] = {}
     for name, body in budgets_raw.items():
@@ -139,7 +139,7 @@ def load_budget_profiles(path: Path | None = None) -> dict[str, BudgetProfile]:
                 options=options,
                 timeout_seconds=body.get("timeout_seconds"),
             )
-        except Exception as exc:  # noqa: BLE001 - goi thanh loi domain co ngu canh
-            raise ConfigurationError(f"Budget '{name}' cau hinh sai: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001 - wrap in domain error with context
+            raise ConfigurationError(f"Budget '{name}' is misconfigured: {exc}") from exc
 
     return profiles

@@ -17,9 +17,9 @@ retry:
   backoff_base_seconds: 0.5
 
 concurrency:
-  # So request duoc phep goi provider dong thoi. Mac dinh = 1 vi VRAM 12GB
-  # cua RTX 4080 rat de tran neu chay song song nhieu request context lon
-  # tren cung mot model 9.7B. Tang len neu do duoc con du VRAM.
+  # Max parallel requests allowed. Default = 1 because limited VRAM can easily overflow
+  # when running multiple large-context requests simultaneously.
+  # Increase this if you monitor that you have enough free VRAM.
   max_parallel_requests: 1
 
 logging:

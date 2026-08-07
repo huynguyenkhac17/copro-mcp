@@ -1,8 +1,8 @@
-"""CallLocalUseCase: dieu phoi toan bo flow cua mot lan goi call_local.
+"""CallLocalUseCase: coordinates the entire flow of a call_local invocation.
 
-Khong tu chua logic chi tiet - delegate cho domain services (PromptBuilder,
-OutputParser) va provider (chi qua interface LLMProvider, khong biet gi ve
-Ollama/vLLM/OpenAI cu the).
+Does not contain detailed logic - delegates to domain services (PromptBuilder,
+OutputParser) and provider (only via LLMProvider interface, agnostic of
+specific Ollama/vLLM/OpenAI details).
 """
 
 from __future__ import annotations
@@ -42,8 +42,8 @@ class CallLocalUseCase:
         self._file_context_resolver = file_context_resolver or FileContextResolver(
             allowed_roots=[]
         )
-        # GPU 12GB de tran neu nhieu request chay song song tren cung 1 model
-        # context lon -> gioi han so luong goi provider dong thoi.
+        # Limited GPU VRAM might easily overflow if multiple requests with large 
+        # contexts run in parallel. Thus, we limit concurrent provider calls.
         self._semaphore = asyncio.Semaphore(config.concurrency.max_parallel_requests)
 
     async def execute(self, request: CallLocalRequest) -> CallLocalResult:
@@ -89,8 +89,8 @@ class CallLocalUseCase:
         except TimeoutError:
             latency_ms = (time.monotonic() - start) * 1000
             error = (
-                f"Local model khong tra loi trong {timeout}s (budget={request.budget}). "
-                "Thu budget thap hon hoac rut gon context."
+                f"Local model did not respond within {timeout}s (budget={request.budget}). "
+                "Try a lower budget or truncate the context."
             )
             self._logger.log_failure(
                 budget=request.budget,
@@ -168,7 +168,7 @@ class CallLocalUseCase:
         if profile is None:
             available = ", ".join(sorted(self._budget_profiles))
             raise ConfigurationError(
-                f"Budget '{budget}' khong ton tai. Cac budget hien co: {available}"
+                f"Budget '{budget}' does not exist. Available budgets: {available}"
             )
         return profile
 

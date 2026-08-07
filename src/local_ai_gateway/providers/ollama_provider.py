@@ -1,8 +1,8 @@
-"""Provider goi Ollama qua HTTP (/api/chat).
+"""Provider calling Ollama via HTTP (/api/chat).
 
-Day la implementation CU THE duy nhat cua LLMProvider hien co. Khong co
-logic nghiep vu nao o day ngoai viec map GenerationOptions <-> Ollama API
-va bien loi httpx thanh exception domain.
+This is the only SPECIFIC implementation of LLMProvider currently available. There is no
+business logic here other than mapping GenerationOptions <-> Ollama API
+and transforming httpx errors into domain exceptions.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ class OllamaProvider:
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._model = model
-        # timeout=None: viec cho timeout la trach nhiem cua application
-        # layer (asyncio.wait_for theo tung budget), khong phai cua provider.
+        # timeout=None: waiting for timeout is the responsibility of the application
+        # layer (asyncio.wait_for per budget), not the provider's.
         self._client = http_client or httpx.AsyncClient(timeout=None)
         self._owns_client = http_client is None
 
@@ -78,29 +78,29 @@ class OllamaProvider:
             response = await self._client.post(f"{self._endpoint}/api/chat", json=payload)
         except httpx.ConnectError as exc:
             raise ProviderUnavailableError(
-                f"Khong ket noi duoc Ollama tai {self._endpoint}: {exc}"
+                f"Could not connect to Ollama at {self._endpoint}: {exc}"
             ) from exc
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(f"Ollama timeout: {exc}") from exc
         except httpx.HTTPError as exc:
-            raise ProviderUnavailableError(f"Loi HTTP khi goi Ollama: {exc}") from exc
+            raise ProviderUnavailableError(f"HTTP error when calling Ollama: {exc}") from exc
         latency_ms = (time.monotonic() - start) * 1000
 
         if response.status_code != 200:
             raise ProviderUnavailableError(
-                f"Ollama tra ve status {response.status_code}: {response.text[:500]}"
+                f"Ollama returned status {response.status_code}: {response.text[:500]}"
             )
 
         try:
             data = response.json()
         except ValueError as exc:
-            raise InvalidResponseError(f"Ollama tra ve body khong phai JSON: {exc}") from exc
+            raise InvalidResponseError(f"Ollama returned non-JSON body: {exc}") from exc
 
         try:
             content = data["message"]["content"]
         except (KeyError, TypeError) as exc:
             raise InvalidResponseError(
-                f"Response Ollama thieu truong 'message.content': {data}"
+                f"Ollama response missing 'message.content' field: {data}"
             ) from exc
 
         return ProviderResponse(

@@ -1,7 +1,7 @@
-"""Structured logging cho toan bo gateway.
+"""Structured logging for the entire gateway.
 
-QUAN TRONG: server dung MCP stdio transport - stdout danh rieng cho giao
-thuc MCP. Moi log PHAI ghi ra stderr, khong bao gio ra stdout.
+IMPORTANT: The server uses MCP stdio transport - stdout is reserved exclusively for
+the MCP protocol. All logs MUST be written to stderr, never to stdout.
 """
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ def get_logger(name: str) -> logging.Logger:
 
 
 class InvocationLogger:
-    """Ghi metadata cua moi lan goi call_local (timestamp qua log formatter,
-    budget, provider, model, latency, tokens, success/failure) - khong leak
-    noi dung user (task/context/response) tru khi debug_log_content=True.
+    """Log metadata of each call_local invocation (timestamp via log formatter,
+    budget, provider, model, latency, tokens, success/failure) - does not leak
+    user content (task/context/response) unless debug_log_content=True.
     """
 
     def __init__(self, logger: logging.Logger, debug_log_content: bool = False) -> None:

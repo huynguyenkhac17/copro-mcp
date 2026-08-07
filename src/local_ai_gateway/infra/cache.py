@@ -1,9 +1,9 @@
-"""Cache in-memory thuan (TTL + LRU), khong phu thuoc framework/service
-ben ngoai - dung chung cho bat ky gia tri nao can cache trong tien trinh
-server (vd ProviderResponse trong CachingProvider).
+"""Pure in-memory cache (TTL + LRU), with no external framework/service
+dependencies - used generally for any value needing caching in the server
+process (e.g. ProviderResponse in CachingProvider).
 
-Khong ben vung qua lan restart server - chap nhan duoc o v1, don gian hon
-la uu tien hang dau cho mot cache trong tien trinh dai han duy nhat.
+Not persistent across server restarts - acceptable for v1, simplicity is
+the top priority for a single long-running process cache.
 """
 
 from __future__ import annotations

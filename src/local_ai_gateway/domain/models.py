@@ -1,4 +1,4 @@
-"""Cac model thuan domain, khong phu thuoc provider/framework cu the."""
+"""Pure domain models, completely independent of specific providers/frameworks."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ OutputFormat = Literal["text", "json"]
 
 
 class GenerationOptions(BaseModel):
-    """Tham so sinh van ban - anh xa 1-1 toi 'options' cua Ollama, nhung
-    khong phu thuoc Ollama (provider khac se tu map lai theo API rieng).
+    """Text generation parameters - 1-1 mapping to Ollama 'options', but
+    independent of Ollama (other providers will map this to their own APIs).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -27,14 +27,14 @@ class GenerationOptions(BaseModel):
     stop: list[str] = Field(default_factory=list)
     format: Literal["json"] | dict[str, Any] | None = None
     think: bool | None = None
-    """Bat/tat 'thinking' cho model ho tro reasoning (vd qwen3.5). None = mac
-    dinh cua model. Cac model thinking co the tieu het num_predict cho phan
-    suy nghi noi bo va khong con token nao cho cau tra loi cuoi - budget can
-    toc do nhanh (L1) nen dat think=False."""
+    """Enable/disable 'thinking' for reasoning-capable models (e.g. qwen3.5). None = model default.
+    Thinking models can consume all num_predict for internal reasoning
+    leaving zero tokens for the final answer - budgets needing high speed (L1)
+    should set think=False."""
 
 
 class BudgetProfile(BaseModel):
-    """Mot muc do 'budget' (L1/L2/L3): ten + tham so sinh + mo ta muc dich."""
+    """A 'budget' level (L1/L2/L3): name + generation options + purpose description."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -42,11 +42,11 @@ class BudgetProfile(BaseModel):
     description: str
     options: GenerationOptions
     timeout_seconds: float | None = None
-    """None = dung timeout_seconds mac dinh cua AppConfig."""
+    """None = use default timeout_seconds from AppConfig."""
 
 
 class ProviderResponse(BaseModel):
-    """Ket qua tho tra ve tu mot LLMProvider, chua qua parse/validate JSON."""
+    """Raw result returned from an LLMProvider, before JSON parse/validation."""
 
     raw_text: str
     provider_name: str

@@ -1,4 +1,4 @@
-"""Backoff wrapper cho cac loi transient khi goi provider."""
+"""Backoff wrapper for transient errors when calling the provider."""
 
 from __future__ import annotations
 
@@ -23,11 +23,11 @@ async def with_backoff(
     max_attempts: int,
     backoff_base_seconds: float,
 ) -> T:
-    """Goi func(), retry toi da max_attempts lan neu gap loi transient.
+    """Call func(), retry up to max_attempts times if a transient error occurs.
 
-    Backoff: backoff_base_seconds * 2**attempt + jitter nho. Loi khong
-    transient (ConfigurationError, InvalidResponseError, ...) khong duoc
-    bat o day - se raise thang len tren ngay lan dau.
+    Backoff: backoff_base_seconds * 2**attempt + small jitter. Non-transient
+    errors (ConfigurationError, InvalidResponseError, ...) are not
+    caught here - they will be raised immediately on the first failure.
     """
 
     last_error: Exception | None = None

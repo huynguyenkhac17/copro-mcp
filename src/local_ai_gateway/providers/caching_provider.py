@@ -1,10 +1,10 @@
-"""Decorator (composition) boc quanh bat ky LLMProvider nao de cache response
-theo (provider, model, prompt cuoi cung, options). Khong doi application/
-domain/mcp layer - chi la mot buoc wrap them trong ProviderFactory.
+"""Decorator (composition) wrapping any LLMProvider to cache response
+by (provider, model, final prompt, options). Does not change application/
+domain/mcp layers - it's just an additional wrap step in ProviderFactory.
 
-Prompt duoc hash o day la prompt DA build xong (sau PromptBuilder +
-FileContextResolver), nen cache tu dong invalidate khi noi dung file/context
-thay doi - khong can theo doi mtime rieng.
+The prompt hashed here is the ALREADY built prompt (after PromptBuilder +
+FileContextResolver), so the cache automatically invalidates when file/context
+content changes - no need to track mtime separately.
 """
 
 from __future__ import annotations

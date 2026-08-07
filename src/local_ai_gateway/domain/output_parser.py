@@ -1,9 +1,9 @@
-"""Parse/repair output JSON tra ve tu model local.
+"""Parse/repair output JSON returned from local model.
 
-Model 9B khong the dam bao luon tra JSON hop le du da ep 'format=json'.
-Chien luoc o day la graceful degrade: khong bao gio raise loi cung khi
-parse that bai - chi tra ve warning de use case quyet dinh (Claude o tren
-cung se la nguoi review/reject ket qua nay).
+9B models cannot guarantee valid JSON returns even when 'format=json' is enforced.
+The strategy here is graceful degrade: never raise a hard error when parsing fails -
+only return a warning for the use case to decide (Claude at the top level
+will ultimately be the one to review/reject this result).
 """
 
 from __future__ import annotations

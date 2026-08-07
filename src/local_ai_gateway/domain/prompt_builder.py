@@ -1,9 +1,9 @@
-"""Ghep task + context thanh prompt cuoi cung, cat bot context neu vuot
-kha nang context cua budget dang dung.
+"""Combines task + context into the final prompt, truncating context if it exceeds
+the context capacity of the current budget.
 
-Chien luoc cat o day la heuristic don gian theo so ky tu (xem design flaw
-#2 trong plan kien truc): cat phan duoi cua context, giu phan dau, va bao
-warning ro rang de Claude biet du lieu da bi rut gon.
+The truncation strategy here is a simple character-based heuristic (see design flaw
+#2 in architecture plan): truncate the bottom of the context, keep the top, and report
+a clear warning so Claude knows the data has been truncated.
 """
 
 from __future__ import annotations
@@ -12,17 +12,17 @@ from pydantic import BaseModel
 
 from local_ai_gateway.domain.models import BudgetProfile, OutputFormat
 
-# Heuristic tho: trung binh ~4 ky tu / token cho van ban Anh-Viet tron.
+# Rough heuristic: average ~4 characters / token for mixed English-Vietnamese text.
 _CHARS_PER_TOKEN = 4
-# Danh rieng mot phan context window cho system prompt + task + output.
+# Reserve a portion of the context window for system prompt + task + output.
 _CONTEXT_RESERVE_RATIO = 0.25
 
 _JSON_INSTRUCTION = (
-    "\n\nBan PHAI tra loi bang duy nhat mot JSON hop le, khong kem giai "
-    "thich, khong bao trong markdown code fence."
+    "\n\nYou MUST respond with exactly one valid JSON, without any explanations, "
+    "and do not wrap it in markdown code fences."
 )
 _JSON_SCHEMA_INSTRUCTION_TMPL = (
-    "\n\nJSON tra ve phai tuan theo schema sau:\n{schema}"
+    "\n\nThe returned JSON must follow this schema:\n{schema}"
 )
 
 

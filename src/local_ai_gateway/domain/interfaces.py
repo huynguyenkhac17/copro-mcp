@@ -1,8 +1,8 @@
-"""Interface (Protocol) ma moi provider phai tuan theo.
+"""Interface (Protocol) that every provider must follow.
 
-Day la ranh gioi duy nhat giua application layer va cac backend LLM cu the
-(Ollama, vLLM, OpenAI, Gemini, ...). Application layer chi biet den
-LLMProvider, khong bao gio import truc tiep mot provider cu the nao.
+This is the only boundary between the application layer and specific LLM backends
+(Ollama, vLLM, OpenAI, Gemini, ...). The application layer only knows
+LLMProvider, and never imports a specific provider directly.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from local_ai_gateway.domain.models import GenerationOptions, ProviderResponse
 
 @runtime_checkable
 class LLMProvider(Protocol):
-    """Mot backend sinh van ban tu prompt + tham so sinh.
+    """A backend generating text from prompt + generation options.
 
-    Cac loi transient (khong ket noi duoc, timeout) phai duoc raise thanh
-    ProviderUnavailableError / ProviderTimeoutError (xem domain.exceptions),
-    khong de lo exception rieng cua thu vien HTTP/SDK ra ngoai provider.
+    Transient errors (connection failures, timeouts) must be raised as
+    ProviderUnavailableError / ProviderTimeoutError (see domain.exceptions),
+    without leaking HTTP/SDK library specific exceptions outside the provider.
     """
 
     @property
