@@ -1,6 +1,6 @@
-"""Integration test: chay toan bo pipeline CallLocalUseCase voi Ollama that
-qua ca 3 budget (L1/L2/L3) va ca 2 output_format. Bi skip tu dong neu
-Ollama khong chay (xem conftest).
+"""Integration test: run full CallLocalUseCase pipeline with real Ollama
+across 3 budgets (L1/L2/L3) and 2 output_formats. Automatically skipped if
+Ollama is not running (see conftest).
 """
 
 from __future__ import annotations
@@ -18,10 +18,11 @@ from local_ai_gateway.providers.registry import ProviderFactory
 
 @pytest.fixture
 def use_case(app_config: AppConfig) -> CallLocalUseCase:
-    provider = ProviderFactory(app_config).create()
+    providers = ProviderFactory(app_config).create_all()
     budget_profiles = load_budget_profiles()
     return CallLocalUseCase(
-        provider=provider,
+        providers=providers,
+        default_provider=app_config.default_provider,
         config=app_config,
         budget_profiles=budget_profiles,
         invocation_logger=InvocationLogger(logging.getLogger("test.integration.invocation")),
@@ -32,7 +33,7 @@ def use_case(app_config: AppConfig) -> CallLocalUseCase:
 @pytest.mark.asyncio
 async def test_call_local_text_round_trip(use_case: CallLocalUseCase, budget: str):
     result = await use_case.execute(
-        CallLocalRequest(task="Tra loi ngan gon: 1 + 1 bang may?", budget=budget)
+        CallLocalRequest(task="Answer briefly: what is 1 + 1?", budget=budget, provider="ollama")
     )
 
     assert result.success is True, result.error
@@ -50,7 +51,7 @@ async def test_call_local_json_round_trip(use_case: CallLocalUseCase):
     }
     result = await use_case.execute(
         CallLocalRequest(
-            task='Tom tat cau sau trong dung 1 truong "summary": "Con meo ngoi tren ghe."',
+            task='Summarize the following sentence in exactly 1 "summary" field: "The cat sits on the chair."',
             budget="L1",
             output_format="json",
             json_schema=schema,

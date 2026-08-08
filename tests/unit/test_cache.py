@@ -13,7 +13,7 @@ def test_get_set_roundtrip():
 
 def test_missing_key_returns_none():
     cache: InMemoryTTLCache[str] = InMemoryTTLCache(max_entries=10)
-    assert cache.get("khong-ton-tai") is None
+    assert cache.get("does-not-exist") is None
 
 
 def test_ttl_expiry_evicts_entry():
@@ -37,8 +37,8 @@ def test_lru_eviction_drops_least_recently_used():
     cache: InMemoryTTLCache[str] = InMemoryTTLCache(max_entries=2)
     cache.set("a", "1")
     cache.set("b", "2")
-    cache.get("a")  # "a" vua duoc dung -> "b" moi la LRU
-    cache.set("c", "3")  # vuot max_entries -> evict LRU ("b")
+    cache.get("a")  # "a" was just accessed -> "b" becomes the LRU
+    cache.set("c", "3")  # exceeds max_entries -> evicts LRU ("b")
 
     assert cache.get("a") == "1"
     assert cache.get("b") is None

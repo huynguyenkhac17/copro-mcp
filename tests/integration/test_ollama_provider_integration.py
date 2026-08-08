@@ -1,5 +1,5 @@
-"""Integration test: goi Ollama that voi model cau hinh trong default.yaml
-(hien la qwen3.5:9b). Bi skip tu dong neu Ollama khong chay (xem conftest).
+"""Integration test: calls real Ollama with the model configured in default.yaml
+(currently qwen3.5:9b). Skipped automatically if Ollama is not running (see conftest).
 """
 
 from __future__ import annotations
@@ -14,23 +14,24 @@ from local_ai_gateway.providers.ollama_provider import OllamaProvider
 
 @pytest.fixture
 def provider(app_config: AppConfig) -> OllamaProvider:
-    return OllamaProvider(endpoint=app_config.ollama.endpoint, model=app_config.ollama.model)
+    ollama_config = app_config.providers["ollama"]
+    return OllamaProvider(endpoint=ollama_config.endpoint, model=ollama_config.model)
 
 
 @pytest.mark.asyncio
 async def test_generate_plain_text(provider: OllamaProvider):
     options = GenerationOptions(
-        system_prompt="Tra loi bang dung 1 tu, khong giai thich.",
+        system_prompt="Answer with exactly 1 word, do not explain.",
         temperature=0.0,
         num_predict=16,
         num_ctx=2048,
         seed=42,
-        # qwen3.5 la model thinking - tat thinking de tra loi truc tiep,
-        # neu khong num_predict nho se bi tieu het cho phan suy nghi.
+        # qwen3.5 is a thinking model - disable thinking to answer directly,
+        # otherwise a small num_predict will be consumed entirely by the thinking part.
         think=False,
     )
 
-    response = await provider.generate("Thu do cua Viet Nam la gi?", options)
+    response = await provider.generate("What is the capital of Vietnam?", options)
 
     assert response.raw_text.strip() != ""
     assert response.provider_name == "ollama"
@@ -42,8 +43,8 @@ async def test_generate_plain_text(provider: OllamaProvider):
 async def test_generate_json_format_round_trip(provider: OllamaProvider):
     options = GenerationOptions(
         system_prompt=(
-            "Ban PHAI tra loi bang duy nhat 1 JSON object dang "
-            '{"answer": <so>}, khong kem chu nao khac.'
+            "You MUST reply with exactly 1 JSON object in the format "
+            '{"answer": <number>}, without any other text.'
         ),
         temperature=0.0,
         num_predict=32,
@@ -53,7 +54,7 @@ async def test_generate_json_format_round_trip(provider: OllamaProvider):
         think=False,
     )
 
-    response = await provider.generate("2 + 2 bang may?", options)
+    response = await provider.generate("What is 2 + 2?", options)
     parsed = OutputParser().parse(response.raw_text)
 
     assert "json_parse_failed" not in parsed.warnings

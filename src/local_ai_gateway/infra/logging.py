@@ -10,6 +10,8 @@ import logging
 import sys
 from typing import Any
 
+from local_ai_gateway.infra.stats import StatsCollector
+
 _CONFIGURED = False
 
 
@@ -35,9 +37,15 @@ class InvocationLogger:
     user content (task/context/response) unless debug_log_content=True.
     """
 
-    def __init__(self, logger: logging.Logger, debug_log_content: bool = False) -> None:
+    def __init__(
+        self,
+        logger: logging.Logger,
+        debug_log_content: bool = False,
+        stats_collector: StatsCollector | None = None,
+    ) -> None:
         self._logger = logger
         self._debug_log_content = debug_log_content
+        self._stats_collector = stats_collector
 
     def log_success(
         self,
@@ -47,10 +55,20 @@ class InvocationLogger:
         model: str,
         latency_ms: float,
         tokens_used: int | None,
+        cached: bool,
         warnings: list[str],
         task: str | None = None,
         raw_response: str | None = None,
     ) -> None:
+        if self._stats_collector:
+            self._stats_collector.record_success(
+                provider=provider,
+                budget=budget,
+                cached=cached,
+                tokens_used=tokens_used,
+                latency_ms=latency_ms,
+            )
+
         fields: dict[str, Any] = {
             "event": "call_local",
             "success": True,
@@ -74,6 +92,9 @@ class InvocationLogger:
         error: str,
         task: str | None = None,
     ) -> None:
+        if self._stats_collector:
+            self._stats_collector.record_failure(provider=provider, budget=budget)
+
         fields: dict[str, Any] = {
             "event": "call_local",
             "success": False,

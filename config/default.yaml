@@ -1,15 +1,23 @@
-# Cau hinh mac dinh cua Local AI Gateway.
-# Moi gia tri o day co the bi override boi bien moi truong voi prefix
-# LOCAL_AI_GATEWAY_ (vi du LOCAL_AI_GATEWAY_OLLAMA__MODEL=qwen3.5:9b),
-# hoac bang cach tro toi mot file config khac qua LOCAL_AI_GATEWAY_CONFIG.
+# Default configuration for the LLM Worker Pool (local-ai-gateway).
+# Any value here can be overridden by environment variables prefixed with
+# LOCAL_AI_GATEWAY_ (e.g., LOCAL_AI_GATEWAY_OLLAMA__MODEL=qwen3.5:9b),
+# or by pointing to a different config file via LOCAL_AI_GATEWAY_CONFIG.
 
-provider: ollama
+default_provider: gemini
+providers:
+  ollama:
+    type: ollama
+    endpoint: http://localhost:11434
+    model: qwen3.5:9b
+  gemini:
+    type: openai_compatible
+    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    # "-latest" is a dynamic alias pointing to the latest stable flash version,
+    # avoiding the need to manually update when specific model versions are deprecated.
+    model: gemini-flash-latest
+    api_key_env: GEMINI_API_KEY
 
-ollama:
-  endpoint: http://localhost:11434
-  model: qwen3.5:9b
-
-# Timeout mac dinh (giay) neu budget khong tu dinh nghia rieng.
+# Default timeout (seconds) if the budget does not explicitly define one.
 timeout_seconds: 60
 
 retry:
@@ -24,20 +32,31 @@ concurrency:
 
 logging:
   level: INFO
-  # Chi bat true khi dev/debug local - se ghi ca noi dung task/context/response.
+  # Enable only for local dev/debug - logs the full content of tasks/contexts/responses.
   debug_log_content: false
 
 file_access:
-  # Danh sach thu muc goc duoc phep doc qua tham so file_paths cua call_local.
-  # Rong = tinh nang TAT (an toan mac dinh). Vi du bat cho 1 project:
+  # List of allowed root directories that can be read via the file_paths parameter of call_local.
+  # Empty = feature DISABLED (secure default). Example to enable for a project:
   #   allowed_roots: ["D:/project/mcp"]
-  allowed_roots: []
+  allowed_roots: ["D:/project"]
   max_file_bytes: 200000
   max_total_bytes: 800000
 
 cache:
-  # Cache response theo (prompt cuoi cung da build + options) de khong tra
-  # gia inference/GPU lap lai cho cung mot cau hoi/file.
+  # Caches provider responses by (final prompt + options), avoiding repeated
+  # inference/GPU costs for the exact same question.
   enabled: true
   max_entries: 256
   ttl_seconds: 3600
+
+jobs:
+  ttl_seconds: 3600
+  max_entries: 1000
+
+rag:
+  enabled: false
+  embedding_model: nomic-embed-text
+  chunk_size_tokens: 256
+  overlap_tokens: 32
+  top_k: 10

@@ -41,6 +41,9 @@ class CachingProvider:
         self._cache.set(key, response)
         return response
 
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
     def _make_key(self, prompt: str, options: GenerationOptions) -> str:
         payload = {
             "provider": self._inner.provider_name,

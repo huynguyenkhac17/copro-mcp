@@ -19,7 +19,7 @@ from local_ai_gateway.infra.logging import InvocationLogger
 
 
 class FakeProvider:
-    """Provider gia lap LLMProvider de test use case ma khong can Ollama that."""
+    """Mock provider for testing without real Ollama."""
 
     def __init__(
         self,
@@ -88,7 +88,8 @@ def _use_case(
     file_context_resolver: FileContextResolver | None = None,
 ) -> CallLocalUseCase:
     return CallLocalUseCase(
-        provider=provider,
+        providers={"fake": provider},
+        default_provider="fake",
         config=config,
         budget_profiles=profiles,
         invocation_logger=InvocationLogger(logging.getLogger("test.invocation")),
@@ -147,7 +148,7 @@ async def test_unknown_budget_raises_configuration_error():
 async def test_transient_error_retries_then_succeeds():
     provider = FakeProvider(
         responses=[
-            ProviderUnavailableError("tam thoi khong ket noi duoc"),
+            ProviderUnavailableError("temporarily unable to connect"),
             ProviderResponse(
                 raw_text="ok", provider_name="fake", model_name="fake-model", latency_ms=1.0
             ),
@@ -165,8 +166,8 @@ async def test_transient_error_retries_then_succeeds():
 async def test_transient_error_exhausts_retries_returns_failure_result():
     provider = FakeProvider(
         responses=[
-            ProviderUnavailableError("loi 1"),
-            ProviderUnavailableError("loi 2"),
+            ProviderUnavailableError("error 1"),
+            ProviderUnavailableError("error 2"),
         ]
     )
     use_case = _use_case(provider, _config(max_attempts=2), {"L2": _profile()})
@@ -186,7 +187,7 @@ async def test_timeout_returns_failure_result_without_raising():
     result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
 
     assert result.success is False
-    assert "khong tra loi" in (result.error or "")
+    assert "did not respond" in (result.error or "")
 
 
 @pytest.mark.asyncio
@@ -204,20 +205,74 @@ async def test_concurrency_semaphore_limits_parallel_provider_calls():
 
 
 @pytest.mark.asyncio
+async def test_empty_response_from_thinking_exhaustion_retries_with_thinking_disabled():
+    profile = _profile()  # think=None (model default, i.e. thinking left on)
+    provider = FakeProvider(
+        responses=[
+            ProviderResponse(
+                raw_text="",
+                provider_name="fake",
+                model_name="fake-model",
+                latency_ms=5.0,
+                tokens_used=profile.options.num_predict,
+            ),
+            ProviderResponse(
+                raw_text="actual answer",
+                provider_name="fake",
+                model_name="fake-model",
+                latency_ms=5.0,
+            ),
+        ]
+    )
+    use_case = _use_case(provider, _config(), {"L2": profile})
+
+    result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert result.content == "actual answer"
+    assert provider.call_count == 2
+    assert "retried_with_thinking_disabled_after_empty_response" in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_empty_response_with_thinking_already_disabled_does_not_retry():
+    profile = _profile()
+    profile = profile.model_copy(update={"options": profile.options.model_copy(update={"think": False})})
+    provider = FakeProvider(
+        responses=[
+            ProviderResponse(
+                raw_text="",
+                provider_name="fake",
+                model_name="fake-model",
+                latency_ms=5.0,
+                tokens_used=profile.options.num_predict,
+            ),
+        ]
+    )
+    use_case = _use_case(provider, _config(), {"L2": profile})
+
+    result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert provider.call_count == 1
+    assert "empty_response_possible_thinking_exhaustion" in result.warnings
+
+
+@pytest.mark.asyncio
 async def test_file_paths_are_merged_into_context_sent_to_provider(tmp_path):
     f = tmp_path / "note.txt"
-    f.write_text("noi dung tu file")
+    f.write_text("content from file")
     resolver = FileContextResolver(allowed_roots=[tmp_path])
 
     provider = FakeProvider()
     use_case = _use_case(provider, _config(), {"L2": _profile()}, file_context_resolver=resolver)
 
     result = await use_case.execute(
-        CallLocalRequest(task="tom tat", budget="L2", file_paths=[str(f)])
+        CallLocalRequest(task="summarize", budget="L2", file_paths=[str(f)])
     )
 
     assert result.success is True
-    assert "noi dung tu file" in (provider.last_prompt or "")
+    assert "content from file" in (provider.last_prompt or "")
     assert result.warnings == []
 
 
@@ -227,7 +282,7 @@ async def test_file_paths_without_configured_resolver_warns_disabled():
     use_case = _use_case(provider, _config(), {"L2": _profile()})  # resolver mac dinh: allowed_roots=[]
 
     result = await use_case.execute(
-        CallLocalRequest(task="tom tat", budget="L2", file_paths=["D:/khong/duoc/doc.txt"])
+        CallLocalRequest(task="summarize", budget="L2", file_paths=["D:/not/allowed/read.txt"])
     )
 
     assert result.success is True

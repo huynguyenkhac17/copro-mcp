@@ -1,266 +1,179 @@
-# local-ai-gateway
+# LLM Worker Pool
 
-MCP server đóng vai trò **middleware giữa Claude Code và các LLM chạy local**
-(hiện tại qua [Ollama](https://ollama.com), tương lai có thể thêm vLLM,
-llama.cpp, OpenAI-compatible API, Gemini, ...).
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-1.2.0+-green.svg)](https://modelcontextprotocol.io/)
 
-Đây **không phải chatbot**. Claude Code luôn là bộ não ra quyết định cuối
-cùng; model local chỉ là "worker" chuyên biệt — dùng để nén context (đọc
-nhiều file, tóm tắt, tìm bug candidate, lên kế hoạch sơ bộ) hoặc xử lý các
-tác vụ tốn effort thấp/trung bình, giúp tiết kiệm context và token của
-Claude.
+An MCP (Model Context Protocol) server acting as a middleware between Claude Code and a pool of local/cloud LLM workers.
 
-Toàn bộ hệ thống chỉ expose **đúng một tool MCP**: `call_local`. Claude
-không cần biết model nào đang chạy phía sau hay tham số sinh văn bản cụ
-thể ra sao — mọi thứ nằm sau interface.
+This project is **not a chatbot**. Claude Code remains the ultimate decision-making supervisor; the local models act as specialized "workers" used to compress context (reading multiple files, summarizing, finding bug candidates, initial planning) or handle low/medium effort tasks. This significantly saves Claude's context window and API token usage.
 
-## Kiến trúc
+The entire system exposes exactly **one MCP tool**: `call_local`. Claude does not need to know which model is running in the background or what specific text generation parameters are used—everything is abstracted behind a clean interface.
+
+## Architecture
 
 ```
 Claude Code (supervisor)
       │ call_local(task, budget, context, output_format, json_schema)
       ▼
-MCP layer        server.py — đăng ký tool, map input/exception
+MCP layer        server.py — registers the tool, maps inputs/exceptions
       ▼
-Application layer  CallLocalUseCase — điều phối toàn bộ flow
+Application layer  CallLocalUseCase — orchestrates the main flow
       ▼
 Domain layer      interfaces / models / PromptBuilder / OutputParser
       ▼
-Provider layer    ProviderFactory → OllamaProvider (httpx → Ollama /api/chat)
+Provider layer    ProviderFactory → OllamaProvider / OpenAICompatibleProvider
 ```
 
-Nguyên tắc: domain không phụ thuộc gì cả; application chỉ biết domain qua
-interface `LLMProvider`; provider implement interface đó; MCP layer chỉ
-wiring + validate input, không chứa logic nghiệp vụ. Thêm provider mới
-hoặc budget mới **không đụng vào code hiện có** — xem mục [Mở rộng](#mở-rộng).
+**Core Principles:**
+- The domain layer has zero external dependencies.
+- The application layer only interacts with the domain via the `LLMProvider` interface.
+- The MCP layer handles wiring and input validation with no business logic.
+- Adding a new provider or budget requires **no existing code changes** (see [Extensibility](#extensibility)).
 
-Xem chi tiết thiết kế/lý do từng lớp trong lịch sử trao đổi khi kiến trúc
-này được duyệt (không có file thiết kế riêng trong repo).
-
-## Cấu trúc thư mục
+## Directory Structure
 
 ```
 mcp/
 ├── pyproject.toml
 ├── .env.example
 ├── config/
-│   ├── default.yaml        # provider, endpoint, timeout, retry, logging
-│   └── budgets.yaml        # định nghĩa budget L1/L2/L3
+│   ├── default.yaml        # providers, endpoints, timeouts, retries, logging
+│   └── budgets.yaml        # L1/L2/L3 execution budget definitions
 ├── src/local_ai_gateway/
-│   ├── server.py            # MCP entrypoint, đăng ký tool call_local
-│   ├── application/
-│   │   ├── dto.py                    # CallLocalRequest / CallLocalResult
-│   │   └── call_local_use_case.py    # điều phối flow chính
-│   ├── domain/
-│   │   ├── interfaces.py     # LLMProvider (Protocol)
-│   │   ├── models.py         # GenerationOptions, ProviderResponse, BudgetProfile
-│   │   ├── exceptions.py
-│   │   ├── prompt_builder.py # ghép task+context, cắt context nếu vượt num_ctx
-│   │   ├── output_parser.py  # parse/repair JSON, validate schema optional
-│   │   └── file_context.py   # đọc file trực tiếp qua file_paths (allowlist + size limit)
-│   ├── providers/
-│   │   ├── registry.py       # ProviderFactory (+ bọc CachingProvider nếu cache.enabled)
-│   │   ├── caching_provider.py # decorator cache response quanh LLMProvider bất kỳ
-│   │   └── ollama_provider.py
-│   ├── config/
-│   │   └── settings.py       # AppConfig (Pydantic Settings) + load budgets.yaml
-│   └── infra/
-│       ├── logging.py        # structured logger, ghi stderr (không phá stdio)
-│       ├── retry.py          # backoff cho lỗi transient
-│       └── cache.py          # InMemoryTTLCache (TTL + LRU) dùng chung
+│   ├── server.py           # MCP entrypoint, registers call_local tool
+│   ├── application/        # Orchestration layer (DTOs, Use Cases, Map-Reduce, Jobs)
+│   ├── domain/             # Core business logic (Interfaces, Prompts, Parsers, RAG)
+│   ├── providers/          # LLM integrations (Ollama, OpenAI-compatible, Cache)
+│   ├── config/             # Pydantic Settings
+│   └── infra/              # Logging, Retries, Cache, Vector Store, Stats
 └── tests/
-    ├── unit/         # mock LLMProvider, không cần Ollama chạy
-    └── integration/  # gọi Ollama thật, tự skip nếu Ollama không chạy
+    ├── unit/               # Uses mocked LLMProvider
+    └── integration/        # Uses real Ollama (auto-skips if unavailable)
 ```
 
-## Yêu cầu
+## Prerequisites
 
 - Python ≥ 3.11
-- [Ollama](https://ollama.com) đang chạy (`ollama serve`, mặc định
-  `http://localhost:11434`) với model đã pull sẵn (mặc định `qwen3.5:9b`):
-  ```
+- [Ollama](https://ollama.com) running locally (`ollama serve`, default `http://localhost:11434`) with a pulled model (default `qwen3.5:9b`):
+  ```bash
   ollama pull qwen3.5:9b
   ```
+- *(Optional)* To use the `gemini` provider out-of-the-box, set the `GEMINI_API_KEY` environment variable. If omitted, the gemini provider is **skipped with a warning**, and the server will continue running normally with local models.
+- *(Optional)* To use RAG (`rag.enabled: true`), pull an embedding model (default `nomic-embed-text`):
+  ```bash
+  ollama pull nomic-embed-text
+  ```
 
-## Cài đặt
+## Installation
 
 ```bash
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-## Cấu hình
+## Configuration
 
-Mọi tham số đều config-driven, **không cần sửa code**:
+Everything is configuration-driven. **No code modifications are required.**
 
-- `config/default.yaml` — provider, endpoint Ollama, model, timeout, retry,
-  concurrency, logging.
-- `config/budgets.yaml` — định nghĩa các execution budget (xem bên dưới).
-  Thêm budget mới = thêm entry vào file này.
+- `config/default.yaml` — Providers, timeouts, retries, concurrency, logging, file access, caching, background jobs, and RAG.
+- `config/budgets.yaml` — Execution budget definitions. Add a new budget by simply adding a new entry here.
 
-Override bằng biến môi trường (prefix `LOCAL_AI_GATEWAY_`, các trường lồng
-nhau nối bằng `__`) hoặc bằng file `.env` ở gốc repo — copy từ
-`.env.example`. Thứ tự ưu tiên (cao → thấp):
+You can override settings via environment variables (prefix `LOCAL_AI_GATEWAY_`, use `__` for nested fields) or via a `.env` file at the repository root. Priority (highest to lowest):
+`init kwargs > real environment variables > .env file > default.yaml`
 
+### Providers
+
+`config/default.yaml` declares multiple providers simultaneously. Each provider has a name and a `type` (the implementation class in `providers/registry.py`):
+
+```yaml
+default_provider: ollama
+providers:
+  ollama:
+    type: ollama
+    endpoint: http://localhost:11434
+    model: qwen3.5:9b
+  gemini:
+    type: openai_compatible   # Compatible with Gemini/OpenAI/Groq
+    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    model: gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY   # The ENV VAR name containing the key
 ```
-init kwargs (code)  >  biến môi trường thật  >  file .env  >  default.yaml
-```
 
-Ví dụ đổi model không cần sửa file:
+The `call_local` tool accepts a `provider: str | None` parameter to select the backend per invocation (defaults to `default_provider`). This allows routing heavy reasoning to `gemini` while keeping lightweight tasks on `ollama`.
 
-```bash
-set LOCAL_AI_GATEWAY_OLLAMA__MODEL=qwen3-coder:8b
-```
+### Budget Profiles
 
-### Budget profiles
+| Budget | Purpose | thinking | num_ctx | num_predict | timeout |
+|--------|---------|----------|---------|-------------|---------|
+| `L1` | Fast, deterministic — categorization, extraction, short answers | disabled | 4096 | 256 | 20s |
+| `L2` | Balanced — summarizing, moderate refactoring, code explanation | disabled | 12288 | 1024 | 60s |
+| `L3` | Highest quality — architecture analysis, bug finding, reading multiple files | default | 24576 | 4096 | 180s |
 
-| Budget | Mục đích | thinking | num_ctx | num_predict | timeout |
-|--------|----------|----------|---------|-------------|---------|
-| `L1` | Nhanh, deterministic — phân loại, trích xuất, trả lời ngắn | tắt | 4096 | 256 | 20s |
-| `L2` | Cân bằng — tóm tắt, refactor vừa phải, giải thích code | mặc định | 12288 | 1024 | 60s |
-| `L3` | Chất lượng cao nhất — phân tích kiến trúc, lên kế hoạch, đọc nhiều file | mặc định | 24576 | 4096 | 180s |
+> Note: For models with "thinking" capabilities (like `qwen3.5`), enabling thinking with a small `num_predict` may cause the model to consume all tokens on internal reasoning, returning an empty response. Thus, `think: false` is enforced for L1 and L2 budgets to guarantee output.
 
-> Lưu ý: `qwen3.5:9b` là model có khả năng "thinking". Nếu bật thinking mà
-> `num_predict` quá nhỏ, model có thể tiêu hết token cho phần suy nghĩ nội
-> bộ và không còn token nào cho câu trả lời cuối. Vì vậy `L1` tắt hẳn
-> thinking (`think: false`) để đảm bảo luôn có câu trả lời trong ngân sách
-> token thấp.
+### Direct File Access (`file_paths`)
 
-Giá trị `num_ctx` được chọn ở mức an toàn cho phần cứng hạn chế VRAM (weights ~6.6GB +
-KV cache), không dùng tới context tối đa 262144 mà model hỗ trợ — có thể
-tune lại trong `config/budgets.yaml` nếu đo được còn dư/thiếu VRAM.
-
-### Đọc file trực tiếp (`file_paths`)
-
-Thay vì Claude tự đọc file rồi paste nội dung vào `context` (tốn token
-truyền qua MCP), server có thể tự đọc file từ đường dẫn tuyệt đối được chỉ
-định — Claude chỉ cần gửi path. Mặc định tính năng **tắt** (an toàn trước):
-phải khai báo rõ thư mục được phép đọc trong `config/default.yaml`:
+Instead of Claude reading files and pasting them into the prompt (wasting tokens), the server can read files directly via absolute paths. This is **disabled by default** for safety. Configure the allowed directories in `config/default.yaml`:
 
 ```yaml
 file_access:
-  allowed_roots: ["D:/project/mcp"]   # rong = tat
-  max_file_bytes: 200000              # gioi han moi file
-  max_total_bytes: 800000             # gioi han tong cho 1 lan goi
+  allowed_roots: ["D:/project/mcp"]   # Empty = disabled
+  max_file_bytes: 200000              # Limit per file
+  max_total_bytes: 800000             # Limit per invocation
 ```
 
-Mọi lỗi (path ngoài allowlist, path traversal, file không tồn tại, quá lớn,
-không decode được UTF-8) đều **không throw lỗi cứng** — file đó bị bỏ qua và
-ghi warning cụ thể (`file_access_denied:...`, `file_not_found:...`, ...)
-trong `CallLocalResult.warnings`, các file hợp lệ khác vẫn được xử lý bình
-thường.
+Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `CallLocalResult.warnings`.
 
-### Cache response
+### Local RAG
 
-Mỗi lần gọi, response được cache theo hash(prompt cuối cùng đã build +
-options + provider + model) — cache tự invalidate khi nội dung file/context
-hoặc câu hỏi thay đổi, không cần theo dõi mtime riêng. Tránh trả giá GPU +
-thời gian inference khi hỏi lại đúng nội dung (ví dụ Claude gọi lại
-`call_local` với cùng file/task nhiều lần trong một phiên làm việc). Cache
-sống trong bộ nhớ tiến trình (mất khi server restart), cấu hình trong
-`config/default.yaml`:
+If `file_paths` points to a directory and `rag.enabled` is `true`, the server will embed the directory contents using a local embedding model (via Ollama) and use a local FAISS vector store to inject only the most relevant text chunks into the context based on the current `task`. This avoids flooding the context window with entire large directories.
+
+### Response Caching
+
+Responses are cached based on a hash of the final built prompt, generation options, and model. This avoids repeated inference costs for identical queries. The cache is in-memory and configurable in `config/default.yaml`:
 
 ```yaml
 cache:
   enabled: true
-  max_entries: 256      # LRU eviction khi vuot
-  ttl_seconds: 3600      # null = khong het han
+  max_entries: 256
+  ttl_seconds: 3600
 ```
 
-`CallLocalResult.cached` cho biết kết quả có phải lấy từ cache hay không.
+### Background Tasks (`async_mode` & `check_job_status`)
 
-## Đăng ký vào Claude Code
+Large tasks (Budget L3 or Map-Reduce) may exceed Claude's timeout limit. Calling `call_local(..., async_mode=true)` immediately returns a `job_id`. Claude can then periodically poll the `check_job_status(job_id)` tool to retrieve the results once completed.
 
-Server đã cài dạng editable nên có sẵn console script
-`.venv\Scripts\local-ai-gateway.exe`. Đăng ký (user scope — dùng được ở
-mọi project):
+### Map-Reduce for Large Contexts
+
+`call_local(..., map_reduce=true)` automatically splits massive contexts (or large sets of files) into chunks that fit the budget's `num_ctx`. It processes each chunk concurrently (Map phase), then synthesizes the results (Reduce phase). This requires multiple LLM calls and is **opt-in only**. 
+
+## Registering with Claude Code
+
+The server is installed as an editable package, providing the `local-ai-gateway.exe` console script. Register it with Claude Code (user scope):
 
 ```bash
 claude mcp add -s user local-ai-gateway -- "D:\project\mcp\.venv\Scripts\local-ai-gateway.exe"
 ```
 
-Kiểm tra:
+Because it's installed in editable mode, any source code changes in `src/` will take effect immediately upon server restart without needing to re-register.
+
+## Running Tests
 
 ```bash
-claude mcp get local-ai-gateway
-```
-
-Gỡ đăng ký:
-
-```bash
-claude mcp remove local-ai-gateway -s user
-```
-
-Vì cài ở chế độ editable, sửa code trong `src/` không cần đăng ký lại —
-Claude Code sẽ chạy code mới nhất mỗi lần khởi động server.
-
-## Sử dụng — tool `call_local`
-
-```
-call_local(
-    task: str,                    # bắt buộc — mô tả việc cần làm
-    budget: str = "L2",           # "L1" | "L2" | "L3" (hoặc budget tự thêm)
-    context: str | None,          # nội dung/code cần model đọc
-    file_paths: list[str] | None, # đường dẫn để server tự đọc trực tiếp
-    output_format: "text" | "json" = "text",
-    json_schema: dict | None,     # gợi ý cấu trúc JSON mong muốn (optional)
-)
-```
-
-Kết quả trả về (`CallLocalResult`):
-
-```json
-{
-  "success": true,
-  "content": "...",
-  "raw_text": "...",
-  "provider": "ollama",
-  "model": "qwen3.5:9b",
-  "budget_used": "L2",
-  "latency_ms": 1234.5,
-  "tokens_used": 256,
-  "cached": false,
-  "warnings": [],
-  "error": null
-}
-```
-
-Khi có lỗi (timeout, Ollama không kết nối được, JSON không parse được...),
-`success=false` kèm `error`/`warnings` mô tả rõ nguyên nhân — tool **không
-throw lỗi cứng cho các lỗi vận hành**, để Claude tự đọc và quyết định
-(thử lại, hạ budget, hỏi lại user...). Chỉ lỗi cấu hình (budget không tồn
-tại, provider chưa đăng ký...) mới trả về MCP tool error.
-
-## Chạy test
-
-```bash
-# Unit test (không cần Ollama)
+# Unit tests (mocks LLM, does not require Ollama)
 .venv\Scripts\python.exe -m pytest tests/unit -v
 
-# Integration test (cần Ollama đang chạy — tự skip nếu không kết nối được)
+# Integration tests (requires Ollama running - auto-skips if unavailable)
 .venv\Scripts\python.exe -m pytest tests/integration -v
 ```
 
-## Mở rộng
+## Extensibility
 
-**Thêm provider mới** (vLLM, OpenAI, Gemini, llama.cpp, ...):
-1. Viết class implement `LLMProvider` (`domain/interfaces.py`) trong
-   `providers/`.
-2. Đăng ký trong `providers/registry.py` (`_REGISTRY` hoặc gọi
-   `register_provider(...)`).
-3. Thêm block config cho provider đó trong `default.yaml`.
+To **add a new provider type** (e.g., vLLM, llama.cpp):
+*(Note: OpenAI, Gemini, Groq are already supported via the `openai_compatible` type)*
+1. Create a class implementing the `LLMProvider` interface in `providers/`.
+2. Create a builder function and register it in `providers/registry.py`.
+3. Add the corresponding block to `default.yaml`.
 
-Không cần sửa `application/`, `domain/`, hay `server.py`.
-
-**Thêm budget mới**: thêm entry vào `config/budgets.yaml` — không sửa code.
-
-## Ghi chú thiết kế
-
-- Server dùng transport **stdio** — mọi log ghi ra **stderr**
-  (`infra/logging.py`), không bao giờ ghi ra stdout vì stdout dành riêng
-  cho giao thức MCP.
-- Concurrency mặc định giới hạn 1 request gọi provider cùng lúc
-  (`concurrency.max_parallel_requests`) để tránh tràn VRAM trên phần cứng hạn chế
-  khi chạy nhiều request context lớn song song.
-- Log invocation mặc định **không ghi nội dung** task/context/response,
-  chỉ ghi độ dài — bật `logging.debug_log_content=true` khi cần debug local.
+To **add a new budget profile**: simply add an entry to `config/budgets.yaml`.
+No code changes are required for either!

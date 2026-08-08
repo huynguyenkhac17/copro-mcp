@@ -35,9 +35,11 @@ def _resolve_path(env_var: str, default: Path) -> Path:
     return Path(override) if override else default
 
 
-class OllamaProviderConfig(BaseModel):
-    endpoint: str = "http://localhost:11434"
-    model: str = "qwen3.5:9b"
+class ProviderInstanceConfig(BaseModel):
+    type: str
+    endpoint: str
+    model: str
+    api_key_env: str | None = None
 
 
 class RetryConfig(BaseModel):
@@ -74,6 +76,19 @@ class CacheConfig(BaseModel):
     ttl_seconds: float | None = 3600
 
 
+class JobsConfig(BaseModel):
+    ttl_seconds: float = 3600
+    max_entries: int = 1000
+
+
+class RagConfig(BaseModel):
+    enabled: bool = False
+    embedding_model: str = "nomic-embed-text"
+    chunk_size_tokens: int = 256
+    overlap_tokens: int = 32
+    top_k: int = 10
+
+
 class AppConfig(BaseSettings):
     """Root configuration. Priority sources (high -> low):
     init kwargs > real environment variables (LOCAL_AI_GATEWAY_..., nested with
@@ -88,14 +103,16 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
-    provider: str = "ollama"
-    ollama: OllamaProviderConfig = Field(default_factory=OllamaProviderConfig)
+    providers: dict[str, ProviderInstanceConfig] = Field(default_factory=dict)
+    default_provider: str = "ollama"
     timeout_seconds: float = 60.0
     retry: RetryConfig = Field(default_factory=RetryConfig)
     concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     file_access: FileAccessConfig = Field(default_factory=FileAccessConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    jobs: JobsConfig = Field(default_factory=JobsConfig)
+    rag: RagConfig = Field(default_factory=RagConfig)
 
     @classmethod
     def settings_customise_sources(

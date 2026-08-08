@@ -11,7 +11,7 @@ def test_parse_plain_json():
 
 def test_parse_json_inside_markdown_fence():
     parser = OutputParser()
-    raw = 'Day la ket qua:\n```json\n{"summary": "ok"}\n```\nCam on.'
+    raw = 'This is the result:\n```json\n{"summary": "ok"}\n```\nThank you.'
     result = parser.parse(raw)
 
     assert result.content == {"summary": "ok"}
@@ -20,7 +20,7 @@ def test_parse_json_inside_markdown_fence():
 
 def test_parse_json_embedded_in_surrounding_text():
     parser = OutputParser()
-    raw = 'Chac chan la {"summary": "ok"} do ban a.'
+    raw = 'It is definitely {"summary": "ok"} my friend.'
     result = parser.parse(raw)
 
     assert result.content == {"summary": "ok"}
@@ -29,7 +29,7 @@ def test_parse_json_embedded_in_surrounding_text():
 
 def test_parse_failure_returns_none_with_warning():
     parser = OutputParser()
-    result = parser.parse("day khong phai JSON gi ca")
+    result = parser.parse("this is not JSON at all")
 
     assert result.content is None
     assert "json_parse_failed" in result.warnings

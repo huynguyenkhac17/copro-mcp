@@ -7,7 +7,7 @@ new budgets must not require code/type changes here.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,7 @@ from local_ai_gateway.domain.models import OutputFormat
 
 class CallLocalRequest(BaseModel):
     task: str
+    provider: str | None = None
     budget: str = "L2"
     context: str | None = None
     file_paths: list[str] | None = None
@@ -28,6 +29,8 @@ class CallLocalRequest(BaseModel):
 
 class CallLocalResult(BaseModel):
     success: bool
+    status: Literal["done", "running", "failed"] = "done"
+    job_id: str | None = None
     content: Any = None
     raw_text: str = ""
     provider: str = ""

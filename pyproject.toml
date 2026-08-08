@@ -1,7 +1,7 @@
 [project]
-name = "local-ai-gateway"
-version = "0.1.0"
-description = "MCP server: middleware giua Claude Code va cac LLM local (Ollama va cac provider tuong lai)"
+name = "llm-worker-pool"
+version = "0.2.0"
+description = "MCP server: LLM Worker Pool - middleware between Claude Code and local/cloud LLM workers (Ollama, Gemini, and future providers)"
 requires-python = ">=3.11"
 dependencies = [
     "mcp>=1.2.0",
@@ -10,6 +10,8 @@ dependencies = [
     "pydantic-settings>=2.4",
     "pyyaml>=6.0",
     "jsonschema>=4.20",
+    "numpy>=1.26",
+    "faiss-cpu>=1.8",
 ]
 
 [project.optional-dependencies]

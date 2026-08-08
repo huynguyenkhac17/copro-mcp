@@ -30,3 +30,20 @@ class LLMProvider(Protocol):
     async def generate(
         self, prompt: str, options: GenerationOptions
     ) -> ProviderResponse: ...
+
+    async def aclose(self) -> None: ...
+
+
+@runtime_checkable
+class EmbeddingProvider(Protocol):
+    """A backend for generating vector embeddings."""
+
+    @property
+    def provider_name(self) -> str: ...
+
+    @property
+    def model_name(self) -> str: ...
+
+    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+    async def aclose(self) -> None: ...

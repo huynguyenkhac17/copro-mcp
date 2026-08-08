@@ -11,11 +11,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from local_ai_gateway.domain.models import BudgetProfile, OutputFormat
-
-# Rough heuristic: average ~4 characters / token for mixed English-Vietnamese text.
-_CHARS_PER_TOKEN = 4
-# Reserve a portion of the context window for system prompt + task + output.
-_CONTEXT_RESERVE_RATIO = 0.25
+from local_ai_gateway.domain.token_estimate import CONTEXT_RESERVE_RATIO, max_chars_for_tokens
 
 _JSON_INSTRUCTION = (
     "\n\nYou MUST respond with exactly one valid JSON, without any explanations, "
@@ -50,8 +46,8 @@ class PromptBuilder:
                 extra += _JSON_SCHEMA_INSTRUCTION_TMPL.format(schema=json_schema)
             system_prompt = (system_prompt or "") + extra
 
-        max_context_chars = int(
-            profile.options.num_ctx * _CHARS_PER_TOKEN * (1 - _CONTEXT_RESERVE_RATIO)
+        max_context_chars = max_chars_for_tokens(
+            int(profile.options.num_ctx * (1 - CONTEXT_RESERVE_RATIO))
         )
 
         used_context = context or ""

@@ -1,3 +1,3 @@
-"""Local AI Gateway - MCP middleware giua Claude Code va cac LLM local."""
+"""LLM Worker Pool - MCP middleware between Claude Code and local/cloud LLM workers."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

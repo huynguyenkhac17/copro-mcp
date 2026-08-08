@@ -13,11 +13,12 @@ import time
 from local_ai_gateway.application.dto import CallLocalRequest, CallLocalResult
 from local_ai_gateway.config.settings import AppConfig
 from local_ai_gateway.domain.exceptions import ConfigurationError, LocalAIGatewayError
-from local_ai_gateway.domain.file_context import FileContextResolver
+from local_ai_gateway.domain.file_context import FileContextResolver, resolve_request_context
 from local_ai_gateway.domain.interfaces import LLMProvider
-from local_ai_gateway.domain.models import BudgetProfile
+from local_ai_gateway.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
 from local_ai_gateway.domain.output_parser import OutputParser
 from local_ai_gateway.domain.prompt_builder import PromptBuilder
+from local_ai_gateway.domain.rag_indexer import RagIndexer
 from local_ai_gateway.infra.logging import InvocationLogger
 from local_ai_gateway.infra.retry import with_backoff
 
@@ -25,15 +26,18 @@ from local_ai_gateway.infra.retry import with_backoff
 class CallLocalUseCase:
     def __init__(
         self,
-        provider: LLMProvider,
+        providers: dict[str, LLMProvider],
+        default_provider: str,
         config: AppConfig,
         budget_profiles: dict[str, BudgetProfile],
         invocation_logger: InvocationLogger,
         prompt_builder: PromptBuilder | None = None,
         output_parser: OutputParser | None = None,
         file_context_resolver: FileContextResolver | None = None,
+        rag_indexer: RagIndexer | None = None,
     ) -> None:
-        self._provider = provider
+        self._providers = providers
+        self._default_provider = default_provider
         self._config = config
         self._budget_profiles = budget_profiles
         self._logger = invocation_logger
@@ -42,21 +46,29 @@ class CallLocalUseCase:
         self._file_context_resolver = file_context_resolver or FileContextResolver(
             allowed_roots=[]
         )
+        self._rag_indexer = rag_indexer
         # Limited GPU VRAM might easily overflow if multiple requests with large 
         # contexts run in parallel. Thus, we limit concurrent provider calls.
         self._semaphore = asyncio.Semaphore(config.concurrency.max_parallel_requests)
 
     async def execute(self, request: CallLocalRequest) -> CallLocalResult:
-        profile = self._resolve_budget(request.budget)
+        profile = self.resolve_budget(request.budget)
 
-        file_warnings: list[str] = []
-        combined_context = request.context
-        if request.file_paths:
-            file_result = self._file_context_resolver.resolve(request.file_paths)
-            file_warnings = file_result.warnings
-            combined_context = "\n\n".join(
-                part for part in (request.context, file_result.text) if part
+        provider_name = request.provider or self._default_provider
+        provider = self._providers.get(provider_name)
+        if not provider:
+            available = ", ".join(sorted(self._providers))
+            raise ConfigurationError(
+                f"Provider '{provider_name}' does not exist. Available providers: {available}"
             )
+
+        combined_context, file_warnings = await resolve_request_context(
+            self._file_context_resolver,
+            context=request.context,
+            file_paths=request.file_paths,
+            query=request.task,
+            rag_indexer=self._rag_indexer,
+        )
 
         built = self._prompt_builder.build(
             task=request.task,
@@ -77,15 +89,7 @@ class CallLocalUseCase:
         start = time.monotonic()
 
         try:
-            async with self._semaphore:
-                response = await asyncio.wait_for(
-                    with_backoff(
-                        lambda: self._provider.generate(built.user_prompt, options),
-                        max_attempts=self._config.retry.max_attempts,
-                        backoff_base_seconds=self._config.retry.backoff_base_seconds,
-                    ),
-                    timeout=timeout,
-                )
+            response = await self._call_provider(provider, built.user_prompt, options, timeout)
         except TimeoutError:
             latency_ms = (time.monotonic() - start) * 1000
             error = (
@@ -94,8 +98,8 @@ class CallLocalUseCase:
             )
             self._logger.log_failure(
                 budget=request.budget,
-                provider=self._provider.provider_name,
-                model=self._provider.model_name,
+                provider=provider.provider_name,
+                model=provider.model_name,
                 latency_ms=latency_ms,
                 error=error,
                 task=request.task,
@@ -103,8 +107,8 @@ class CallLocalUseCase:
             return CallLocalResult(
                 success=False,
                 budget_used=request.budget,
-                provider=self._provider.provider_name,
-                model=self._provider.model_name,
+                provider=provider.provider_name,
+                model=provider.model_name,
                 latency_ms=latency_ms,
                 error=error,
             )
@@ -112,8 +116,8 @@ class CallLocalUseCase:
             latency_ms = (time.monotonic() - start) * 1000
             self._logger.log_failure(
                 budget=request.budget,
-                provider=self._provider.provider_name,
-                model=self._provider.model_name,
+                provider=provider.provider_name,
+                model=provider.model_name,
                 latency_ms=latency_ms,
                 error=str(exc),
                 task=request.task,
@@ -121,14 +125,33 @@ class CallLocalUseCase:
             return CallLocalResult(
                 success=False,
                 budget_used=request.budget,
-                provider=self._provider.provider_name,
-                model=self._provider.model_name,
+                provider=provider.provider_name,
+                model=provider.model_name,
                 latency_ms=latency_ms,
                 error=str(exc),
             )
 
+        retried_without_thinking = False
+        if self._looks_thinking_exhausted(response, options) and options.think is not False:
+            # Thinking-capable models (e.g. qwen3.5) can burn the entire num_predict
+            # budget on internal reasoning, leaving zero tokens for the actual answer.
+            # Rather than surface an empty result, retry once with thinking forced off.
+            fallback_options = options.model_copy(update={"think": False})
+            try:
+                response = await self._call_provider(
+                    provider, built.user_prompt, fallback_options, timeout
+                )
+                retried_without_thinking = True
+            except (TimeoutError, LocalAIGatewayError):
+                pass  # keep the original (empty) response, fall through to the warning below
+
         warnings = [*file_warnings, *built.warnings]
         content: object = response.raw_text
+
+        if retried_without_thinking:
+            warnings.append("retried_with_thinking_disabled_after_empty_response")
+        elif self._looks_thinking_exhausted(response, options):
+            warnings.append("empty_response_possible_thinking_exhaustion")
 
         if request.output_format == "json":
             parsed = self._output_parser.parse(response.raw_text, request.json_schema)
@@ -141,6 +164,7 @@ class CallLocalUseCase:
             model=response.model_name,
             latency_ms=response.latency_ms,
             tokens_used=response.tokens_used,
+            cached=response.from_cache,
             warnings=warnings,
             task=request.task,
             raw_response=response.raw_text,
@@ -163,7 +187,10 @@ class CallLocalUseCase:
     def available_budgets(self) -> list[str]:
         return list(self._budget_profiles)
 
-    def _resolve_budget(self, budget: str) -> BudgetProfile:
+    def available_providers(self) -> list[str]:
+        return list(self._providers)
+
+    def resolve_budget(self, budget: str) -> BudgetProfile:
         profile = self._budget_profiles.get(budget)
         if profile is None:
             available = ", ".join(sorted(self._budget_profiles))
@@ -174,6 +201,31 @@ class CallLocalUseCase:
 
     @staticmethod
     def _resolve_format(profile: BudgetProfile, request: CallLocalRequest) -> object:
-        if request.output_format == "json" and profile.options.format is None:
-            return "json"
+        if request.output_format == "json":
+            return request.json_schema or profile.options.format or "json"
         return profile.options.format
+
+    @staticmethod
+    def _looks_thinking_exhausted(response: ProviderResponse, options: GenerationOptions) -> bool:
+        return bool(
+            not response.raw_text.strip()
+            and response.tokens_used
+            and response.tokens_used >= options.num_predict
+        )
+
+    async def _call_provider(
+        self,
+        provider: LLMProvider,
+        prompt: str,
+        options: GenerationOptions,
+        timeout: float,
+    ) -> ProviderResponse:
+        async with self._semaphore:
+            return await asyncio.wait_for(
+                with_backoff(
+                    lambda: provider.generate(prompt, options),
+                    max_attempts=self._config.retry.max_attempts,
+                    backoff_base_seconds=self._config.retry.backoff_base_seconds,
+                ),
+                timeout=timeout,
+            )

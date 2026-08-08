@@ -1,5 +1,5 @@
-"""Integration test: cache response va doc file truc tiep qua file_paths,
-chay voi Ollama that. Bi skip tu dong neu Ollama khong chay (xem conftest).
+"""Integration test: cache response and read files directly via file_paths,
+run with real Ollama. Automatically skipped if Ollama is not running (see conftest).
 """
 
 from __future__ import annotations
@@ -20,11 +20,12 @@ from local_ai_gateway.providers.registry import ProviderFactory
 @pytest.mark.asyncio
 async def test_repeated_call_with_same_file_hits_cache(app_config: AppConfig, tmp_path: Path):
     f = tmp_path / "note.txt"
-    f.write_text("Con meo mau den dang ngu tren ghe sofa.")
+    f.write_text("The black cat is sleeping on the sofa.")
 
-    provider = ProviderFactory(app_config).create()
+    providers = ProviderFactory(app_config).create_all()
     use_case = CallLocalUseCase(
-        provider=provider,
+        providers=providers,
+        default_provider=app_config.default_provider,
         config=app_config,
         budget_profiles=load_budget_profiles(),
         invocation_logger=InvocationLogger(logging.getLogger("test.integration.cache")),
@@ -32,7 +33,7 @@ async def test_repeated_call_with_same_file_hits_cache(app_config: AppConfig, tm
     )
 
     request = CallLocalRequest(
-        task="Tom tat noi dung file trong dung 1 cau ngan.",
+        task="Summarize the file content in exactly 1 short sentence.",
         budget="L1",
         file_paths=[str(f)],
     )
