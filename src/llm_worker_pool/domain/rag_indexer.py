@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from local_ai_gateway.config.settings import RagConfig
-from local_ai_gateway.domain.chunker import Chunker
-from local_ai_gateway.domain.interfaces import EmbeddingProvider
-from local_ai_gateway.infra.vector_store import FaissVectorStore
+from llm_worker_pool.config.settings import RagConfig
+from llm_worker_pool.domain.chunker import Chunker
+from llm_worker_pool.domain.interfaces import EmbeddingProvider
+from llm_worker_pool.infra.vector_store import FaissVectorStore
 
 
 class RagIndexer:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from local_ai_gateway.domain.file_context import FileContextResolver
+from llm_worker_pool.domain.file_context import FileContextResolver
 
 
 @pytest.mark.asyncio

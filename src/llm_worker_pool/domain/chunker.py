@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from local_ai_gateway.domain.token_estimate import max_chars_for_tokens
+from llm_worker_pool.domain.token_estimate import max_chars_for_tokens
 
 
 class Chunker:

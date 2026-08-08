@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import asyncio
 
-from local_ai_gateway.domain.interfaces import LLMProvider
-from local_ai_gateway.domain.models import GenerationOptions, ProviderResponse
+from llm_worker_pool.domain.interfaces import LLMProvider
+from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
 
 
 class ConcurrencyProvider:

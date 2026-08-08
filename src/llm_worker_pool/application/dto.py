@@ -11,10 +11,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from local_ai_gateway.domain.models import OutputFormat
+from llm_worker_pool.domain.models import OutputFormat
 
 
-class CallLocalRequest(BaseModel):
+class DelegateTaskRequest(BaseModel):
     task: str
     provider: str | None = None
     budget: str = "L2"
@@ -27,7 +27,7 @@ class CallLocalRequest(BaseModel):
     json_schema: dict[str, Any] | None = None
 
 
-class CallLocalResult(BaseModel):
+class DelegateTaskResult(BaseModel):
     success: bool
     status: Literal["done", "running", "failed"] = "done"
     job_id: str | None = None

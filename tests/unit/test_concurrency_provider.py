@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from local_ai_gateway.domain.models import GenerationOptions
-from local_ai_gateway.providers.concurrency_provider import ConcurrencyProvider
-from tests.unit.test_call_local_use_case import FakeProvider
+from llm_worker_pool.domain.models import GenerationOptions
+from llm_worker_pool.providers.concurrency_provider import ConcurrencyProvider
+from tests.unit.test_delegate_task_use_case import FakeProvider
 
 
 @pytest.mark.asyncio

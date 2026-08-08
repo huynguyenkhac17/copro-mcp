@@ -1,4 +1,4 @@
-"""Background job manager for async call_local tasks."""
+"""Background job manager for async delegate_task tasks."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from collections.abc import Coroutine
 from enum import Enum
 from typing import Any
 
-from local_ai_gateway.application.dto import CallLocalResult
-from local_ai_gateway.domain.exceptions import ConfigurationError
-from local_ai_gateway.infra.cache import InMemoryTTLCache
+from llm_worker_pool.application.dto import DelegateTaskResult
+from llm_worker_pool.domain.exceptions import ConfigurationError
+from llm_worker_pool.infra.cache import InMemoryTTLCache
 
 
 class JobStatus(str, Enum):
@@ -20,17 +20,17 @@ class JobStatus(str, Enum):
 
 
 class JobManager:
-    def __init__(self, ttl_cache: InMemoryTTLCache[CallLocalResult]) -> None:
+    def __init__(self, ttl_cache: InMemoryTTLCache[DelegateTaskResult]) -> None:
         self._cache = ttl_cache
         # asyncio only holds a WEAK reference to tasks created via create_task - without
         # keeping our own strong reference here, the task can be garbage-collected mid-run
         # and the job would silently vanish. See asyncio docs "Important" note on create_task.
         self._background_tasks: set[asyncio.Task[None]] = set()
 
-    def submit(self, coro: Coroutine[Any, Any, CallLocalResult]) -> str:
+    def submit(self, coro: Coroutine[Any, Any, DelegateTaskResult]) -> str:
         job_id = str(uuid.uuid4())
 
-        initial_result = CallLocalResult(
+        initial_result = DelegateTaskResult(
             success=True,
             status=JobStatus.RUNNING.value,  # type: ignore[arg-type]
             job_id=job_id,
@@ -44,7 +44,7 @@ class JobManager:
                 result.status = JobStatus.DONE.value  # type: ignore[arg-type]
                 self._cache.set(job_id, result)
             except Exception as exc:
-                failed_result = CallLocalResult(
+                failed_result = DelegateTaskResult(
                     success=False,
                     status=JobStatus.FAILED.value,  # type: ignore[arg-type]
                     job_id=job_id,
@@ -57,7 +57,7 @@ class JobManager:
         task.add_done_callback(self._background_tasks.discard)
         return job_id
 
-    def get(self, job_id: str) -> CallLocalResult:
+    def get(self, job_id: str) -> DelegateTaskResult:
         result = self._cache.get(job_id)
         if result is None:
             raise ConfigurationError(f"Job ID '{job_id}' does not exist or has expired.")

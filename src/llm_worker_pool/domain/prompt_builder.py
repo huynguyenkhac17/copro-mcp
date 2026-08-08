@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from local_ai_gateway.domain.models import BudgetProfile, OutputFormat
-from local_ai_gateway.domain.token_estimate import CONTEXT_RESERVE_RATIO, max_chars_for_tokens
+from llm_worker_pool.domain.models import BudgetProfile, OutputFormat
+from llm_worker_pool.domain.token_estimate import CONTEXT_RESERVE_RATIO, max_chars_for_tokens
 
 _JSON_INSTRUCTION = (
     "\n\nYou MUST respond with exactly one valid JSON, without any explanations, "

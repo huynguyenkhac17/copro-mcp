@@ -21,7 +21,7 @@ dev = [
 ]
 
 [project.scripts]
-local-ai-gateway = "local_ai_gateway.server:main"
+llm-worker-pool = "llm_worker_pool.server:main"
 
 [build-system]
 requires = ["setuptools>=68"]

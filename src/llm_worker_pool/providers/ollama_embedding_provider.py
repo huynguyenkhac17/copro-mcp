@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from local_ai_gateway.domain.exceptions import InvalidResponseError, ProviderUnavailableError
+from llm_worker_pool.domain.exceptions import InvalidResponseError, ProviderUnavailableError
 
 
 class OllamaEmbeddingProvider:

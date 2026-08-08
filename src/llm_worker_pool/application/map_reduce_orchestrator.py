@@ -4,25 +4,25 @@ from __future__ import annotations
 
 import asyncio
 
-from local_ai_gateway.application.call_local_use_case import CallLocalUseCase
-from local_ai_gateway.application.dto import CallLocalRequest, CallLocalResult
-from local_ai_gateway.domain.chunker import Chunker
-from local_ai_gateway.domain.file_context import FileContextResolver, resolve_request_context
-from local_ai_gateway.domain.token_estimate import CONTEXT_RESERVE_RATIO
+from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
+from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
+from llm_worker_pool.domain.chunker import Chunker
+from llm_worker_pool.domain.file_context import FileContextResolver, resolve_request_context
+from llm_worker_pool.domain.token_estimate import CONTEXT_RESERVE_RATIO
 
 
 class MapReduceOrchestrator:
     def __init__(
         self,
-        call_local_use_case: CallLocalUseCase,
+        delegate_task_use_case: DelegateTaskUseCase,
         chunker: Chunker,
         file_context_resolver: FileContextResolver,
     ) -> None:
-        self._use_case = call_local_use_case
+        self._use_case = delegate_task_use_case
         self._chunker = chunker
         self._file_context_resolver = file_context_resolver
 
-    async def execute(self, request: CallLocalRequest) -> CallLocalResult:
+    async def execute(self, request: DelegateTaskRequest) -> DelegateTaskResult:
         if not request.context and not request.file_paths:
             # Nothing to map-reduce over, just call directly
             return await self._use_case.execute(request)
@@ -55,7 +55,7 @@ class MapReduceOrchestrator:
         # 2. Map Phase
         map_tasks = []
         for i, chunk in enumerate(chunks):
-            map_req = CallLocalRequest(
+            map_req = DelegateTaskRequest(
                 task=f"Extract all information relevant to the following task:\n{request.task}",
                 provider=request.provider,
                 budget=request.budget,
@@ -76,7 +76,7 @@ class MapReduceOrchestrator:
                 valid_map_results.append(f"--- Extracted from Part {i+1} ---\n{res.raw_text}")
                 
         if not valid_map_results:
-            return CallLocalResult(
+            return DelegateTaskResult(
                 success=False,
                 error="All map tasks failed during map-reduce.",
                 warnings=file_warnings,
@@ -84,7 +84,7 @@ class MapReduceOrchestrator:
             
         # 3. Reduce Phase
         reduce_context = "\n\n".join(valid_map_results)
-        reduce_req = CallLocalRequest(
+        reduce_req = DelegateTaskRequest(
             task=f"Synthesize the provided information into a final answer for the task:\n{request.task}",
             provider=request.provider,
             budget=request.budget,

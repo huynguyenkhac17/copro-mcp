@@ -10,7 +10,7 @@ import logging
 import sys
 from typing import Any
 
-from local_ai_gateway.infra.stats import StatsCollector
+from llm_worker_pool.infra.stats import StatsCollector
 
 _CONFIGURED = False
 
@@ -32,7 +32,7 @@ def get_logger(name: str) -> logging.Logger:
 
 
 class InvocationLogger:
-    """Log metadata of each call_local invocation (timestamp via log formatter,
+    """Log metadata of each delegate_task invocation (timestamp via log formatter,
     budget, provider, model, latency, tokens, success/failure) - does not leak
     user content (task/context/response) unless debug_log_content=True.
     """
@@ -70,7 +70,7 @@ class InvocationLogger:
             )
 
         fields: dict[str, Any] = {
-            "event": "call_local",
+            "event": "delegate_task",
             "success": True,
             "budget": budget,
             "provider": provider,
@@ -96,7 +96,7 @@ class InvocationLogger:
             self._stats_collector.record_failure(provider=provider, budget=budget)
 
         fields: dict[str, Any] = {
-            "event": "call_local",
+            "event": "delegate_task",
             "success": False,
             "budget": budget,
             "provider": provider,

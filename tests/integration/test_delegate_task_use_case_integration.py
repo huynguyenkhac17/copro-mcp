@@ -1,4 +1,4 @@
-"""Integration test: run full CallLocalUseCase pipeline with real Ollama
+"""Integration test: run full DelegateTaskUseCase pipeline with real Ollama
 across 3 budgets (L1/L2/L3) and 2 output_formats. Automatically skipped if
 Ollama is not running (see conftest).
 """
@@ -9,18 +9,18 @@ import logging
 
 import pytest
 
-from local_ai_gateway.application.call_local_use_case import CallLocalUseCase
-from local_ai_gateway.application.dto import CallLocalRequest
-from local_ai_gateway.config.settings import AppConfig, load_budget_profiles
-from local_ai_gateway.infra.logging import InvocationLogger
-from local_ai_gateway.providers.registry import ProviderFactory
+from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
+from llm_worker_pool.application.dto import DelegateTaskRequest
+from llm_worker_pool.config.settings import AppConfig, load_budget_profiles
+from llm_worker_pool.infra.logging import InvocationLogger
+from llm_worker_pool.providers.registry import ProviderFactory
 
 
 @pytest.fixture
-def use_case(app_config: AppConfig) -> CallLocalUseCase:
+def use_case(app_config: AppConfig) -> DelegateTaskUseCase:
     providers = ProviderFactory(app_config).create_all()
     budget_profiles = load_budget_profiles()
-    return CallLocalUseCase(
+    return DelegateTaskUseCase(
         providers=providers,
         default_provider=app_config.default_provider,
         config=app_config,
@@ -31,9 +31,9 @@ def use_case(app_config: AppConfig) -> CallLocalUseCase:
 
 @pytest.mark.parametrize("budget", ["L1", "L2", "L3"])
 @pytest.mark.asyncio
-async def test_call_local_text_round_trip(use_case: CallLocalUseCase, budget: str):
+async def test_delegate_task_text_round_trip(use_case: DelegateTaskUseCase, budget: str):
     result = await use_case.execute(
-        CallLocalRequest(task="Answer briefly: what is 1 + 1?", budget=budget, provider="ollama")
+        DelegateTaskRequest(task="Answer briefly: what is 1 + 1?", budget=budget, provider="ollama")
     )
 
     assert result.success is True, result.error
@@ -43,14 +43,14 @@ async def test_call_local_text_round_trip(use_case: CallLocalUseCase, budget: st
 
 
 @pytest.mark.asyncio
-async def test_call_local_json_round_trip(use_case: CallLocalUseCase):
+async def test_delegate_task_json_round_trip(use_case: DelegateTaskUseCase):
     schema = {
         "type": "object",
         "required": ["summary"],
         "properties": {"summary": {"type": "string"}},
     }
     result = await use_case.execute(
-        CallLocalRequest(
+        DelegateTaskRequest(
             task='Summarize the following sentence in exactly 1 "summary" field: "The cat sits on the chair."',
             budget="L1",
             output_format="json",

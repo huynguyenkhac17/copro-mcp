@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from local_ai_gateway.config.settings import AppConfig
+from llm_worker_pool.config.settings import AppConfig
 
 
 @pytest.fixture(scope="session")

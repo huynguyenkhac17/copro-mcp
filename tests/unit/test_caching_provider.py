@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_gateway.domain.models import GenerationOptions, ProviderResponse
-from local_ai_gateway.infra.cache import InMemoryTTLCache
-from local_ai_gateway.providers.caching_provider import CachingProvider
-from tests.unit.test_call_local_use_case import FakeProvider
+from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
+from llm_worker_pool.infra.cache import InMemoryTTLCache
+from llm_worker_pool.providers.caching_provider import CachingProvider
+from tests.unit.test_delegate_task_use_case import FakeProvider
 
 
 def _options(**overrides) -> GenerationOptions:

@@ -1,4 +1,4 @@
-"""CallLocalUseCase: coordinates the entire flow of a call_local invocation.
+"""DelegateTaskUseCase: coordinates the entire flow of a delegate_task invocation.
 
 Does not contain detailed logic - delegates to domain services (PromptBuilder,
 OutputParser) and provider (only via LLMProvider interface, agnostic of
@@ -10,20 +10,20 @@ from __future__ import annotations
 import asyncio
 import time
 
-from local_ai_gateway.application.dto import CallLocalRequest, CallLocalResult
-from local_ai_gateway.config.settings import AppConfig
-from local_ai_gateway.domain.exceptions import ConfigurationError, LocalAIGatewayError
-from local_ai_gateway.domain.file_context import FileContextResolver, resolve_request_context
-from local_ai_gateway.domain.interfaces import LLMProvider
-from local_ai_gateway.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
-from local_ai_gateway.domain.output_parser import OutputParser
-from local_ai_gateway.domain.prompt_builder import PromptBuilder
-from local_ai_gateway.domain.rag_indexer import RagIndexer
-from local_ai_gateway.infra.logging import InvocationLogger
-from local_ai_gateway.infra.retry import with_backoff
+from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
+from llm_worker_pool.config.settings import AppConfig
+from llm_worker_pool.domain.exceptions import ConfigurationError, LocalAIGatewayError
+from llm_worker_pool.domain.file_context import FileContextResolver, resolve_request_context
+from llm_worker_pool.domain.interfaces import LLMProvider
+from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
+from llm_worker_pool.domain.output_parser import OutputParser
+from llm_worker_pool.domain.prompt_builder import PromptBuilder
+from llm_worker_pool.domain.rag_indexer import RagIndexer
+from llm_worker_pool.infra.logging import InvocationLogger
+from llm_worker_pool.infra.retry import with_backoff
 
 
-class CallLocalUseCase:
+class DelegateTaskUseCase:
     def __init__(
         self,
         providers: dict[str, LLMProvider],
@@ -48,7 +48,7 @@ class CallLocalUseCase:
         )
         self._rag_indexer = rag_indexer
 
-    async def execute(self, request: CallLocalRequest) -> CallLocalResult:
+    async def execute(self, request: DelegateTaskRequest) -> DelegateTaskResult:
         profile = self.resolve_budget(request.budget)
 
         provider_name = request.provider or self._default_provider
@@ -101,7 +101,7 @@ class CallLocalUseCase:
                 error=error,
                 task=request.task,
             )
-            return CallLocalResult(
+            return DelegateTaskResult(
                 success=False,
                 budget_used=request.budget,
                 provider=provider.provider_name,
@@ -119,7 +119,7 @@ class CallLocalUseCase:
                 error=str(exc),
                 task=request.task,
             )
-            return CallLocalResult(
+            return DelegateTaskResult(
                 success=False,
                 budget_used=request.budget,
                 provider=provider.provider_name,
@@ -167,7 +167,7 @@ class CallLocalUseCase:
             raw_response=response.raw_text,
         )
 
-        return CallLocalResult(
+        return DelegateTaskResult(
             success=True,
             content=content,
             raw_text=response.raw_text,
@@ -197,7 +197,7 @@ class CallLocalUseCase:
         return profile
 
     @staticmethod
-    def _resolve_format(profile: BudgetProfile, request: CallLocalRequest) -> object:
+    def _resolve_format(profile: BudgetProfile, request: DelegateTaskRequest) -> object:
         if request.output_format == "json":
             return request.json_schema or profile.options.format or "json"
         return profile.options.format

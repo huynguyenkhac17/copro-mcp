@@ -7,7 +7,7 @@ import random
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from local_ai_gateway.domain.exceptions import (
+from llm_worker_pool.domain.exceptions import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )

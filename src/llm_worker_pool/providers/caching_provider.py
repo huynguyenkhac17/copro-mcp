@@ -12,9 +12,9 @@ from __future__ import annotations
 import hashlib
 import json
 
-from local_ai_gateway.domain.interfaces import LLMProvider
-from local_ai_gateway.domain.models import GenerationOptions, ProviderResponse
-from local_ai_gateway.infra.cache import InMemoryTTLCache
+from llm_worker_pool.domain.interfaces import LLMProvider
+from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
+from llm_worker_pool.infra.cache import InMemoryTTLCache
 
 
 class CachingProvider:

@@ -1,7 +1,7 @@
-# Default configuration for the LLM Worker Pool (local-ai-gateway).
+# Default configuration for the LLM Worker Pool.
 # Any value here can be overridden by environment variables prefixed with
-# LOCAL_AI_GATEWAY_ (e.g., LOCAL_AI_GATEWAY_OLLAMA__MODEL=qwen3.5:9b),
-# or by pointing to a different config file via LOCAL_AI_GATEWAY_CONFIG.
+# LLM_WORKER_POOL_ (e.g., LLM_WORKER_POOL_OLLAMA__MODEL=qwen3.5:9b),
+# or by pointing to a different config file via LLM_WORKER_POOL_CONFIG.
 
 default_provider: gemini
 providers:
@@ -35,7 +35,7 @@ logging:
   debug_log_content: false
 
 file_access:
-  # List of allowed root directories that can be read via the file_paths parameter of call_local.
+  # List of allowed root directories that can be read via the file_paths parameter of delegate_task.
   # Empty = feature DISABLED (secure default). Example to enable for a project:
   #   allowed_roots: ["D:/project/mcp"]
   allowed_roots: ["D:/project"]

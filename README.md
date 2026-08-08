@@ -7,17 +7,17 @@ An MCP (Model Context Protocol) server acting as a middleware between Claude Cod
 
 This project is **not a chatbot**. Claude Code remains the ultimate decision-making supervisor; the local models act as specialized "workers" used to compress context (reading multiple files, summarizing, finding bug candidates, initial planning) or handle low/medium effort tasks. This significantly saves Claude's context window and API token usage.
 
-The entire system exposes exactly **one MCP tool**: `call_local`. Claude does not need to know which model is running in the background or what specific text generation parameters are used—everything is abstracted behind a clean interface.
+The entire system exposes exactly **one MCP tool**: `delegate_task`. Claude does not need to know which model is running in the background or what specific text generation parameters are used—everything is abstracted behind a clean interface.
 
 ## Architecture
 
 ```
 Claude Code (supervisor)
-      │ call_local(task, budget, context, output_format, json_schema)
+      │ delegate_task(task, budget, context, output_format, json_schema)
       ▼
 MCP layer        server.py — registers the tool, maps inputs/exceptions
       ▼
-Application layer  CallLocalUseCase — orchestrates the main flow
+Application layer  DelegateTaskUseCase — orchestrates the main flow
       ▼
 Domain layer      interfaces / models / PromptBuilder / OutputParser
       ▼
@@ -39,8 +39,8 @@ mcp/
 ├── config/
 │   ├── default.yaml        # providers, endpoints, timeouts, retries, logging
 │   └── budgets.yaml        # L1/L2/L3 execution budget definitions
-├── src/local_ai_gateway/
-│   ├── server.py           # MCP entrypoint, registers call_local tool
+├── src/llm_worker_pool/
+│   ├── server.py           # MCP entrypoint, registers delegate_task tool
 │   ├── application/        # Orchestration layer (DTOs, Use Cases, Map-Reduce, Jobs)
 │   ├── domain/             # Core business logic (Interfaces, Prompts, Parsers, RAG)
 │   ├── providers/          # LLM integrations (Ollama, OpenAI-compatible, Cache)
@@ -78,7 +78,7 @@ Everything is configuration-driven. **No code modifications are required.**
 - `config/default.yaml` — Providers, timeouts, retries, concurrency, logging, file access, caching, background jobs, and RAG.
 - `config/budgets.yaml` — Execution budget definitions. Add a new budget by simply adding a new entry here.
 
-You can override settings via environment variables (prefix `LOCAL_AI_GATEWAY_`, use `__` for nested fields) or via a `.env` file at the repository root. Priority (highest to lowest):
+You can override settings via environment variables (prefix `LLM_WORKER_POOL_`, use `__` for nested fields) or via a `.env` file at the repository root. Priority (highest to lowest):
 `init kwargs > real environment variables > .env file > default.yaml`
 
 ### Providers
@@ -97,9 +97,13 @@ providers:
     endpoint: https://generativelanguage.googleapis.com/v1beta/openai
     model: gemini-2.5-flash
     api_key_env: GEMINI_API_KEY   # The ENV VAR name containing the key
+    # api_key_envs: [GEMINI_API_KEY_1, GEMINI_API_KEY_2]  # optional: round-robin across multiple keys
+    # concurrency: 10   # optional: max parallel requests for this provider
 ```
 
-The `call_local` tool accepts a `provider: str | None` parameter to select the backend per invocation (defaults to `default_provider`). This allows routing heavy reasoning to `gemini` while keeping lightweight tasks on `ollama`.
+The `delegate_task` tool accepts a `provider: str | None` parameter to select the backend per invocation (defaults to `default_provider`). This allows routing heavy reasoning to `gemini` while keeping lightweight tasks on `ollama`.
+
+Each provider runs behind its own concurrency limit (`ConcurrencyProvider`), so a slow/serial local model never blocks parallel calls to a cloud provider (e.g. during Map-Reduce). If `concurrency` is omitted, it defaults by provider `type`: `ollama` -> 1 (VRAM-safe), everything else -> 5. When `api_key_envs` lists multiple keys, requests round-robin across them to spread load/rate limits.
 
 ### Budget Profiles
 
@@ -122,7 +126,7 @@ file_access:
   max_total_bytes: 800000             # Limit per invocation
 ```
 
-Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `CallLocalResult.warnings`.
+Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `DelegateTaskResult.warnings`.
 
 ### Local RAG
 
@@ -141,18 +145,18 @@ cache:
 
 ### Background Tasks (`async_mode` & `check_job_status`)
 
-Large tasks (Budget L3 or Map-Reduce) may exceed Claude's timeout limit. Calling `call_local(..., async_mode=true)` immediately returns a `job_id`. Claude can then periodically poll the `check_job_status(job_id)` tool to retrieve the results once completed.
+Large tasks (Budget L3 or Map-Reduce) may exceed Claude's timeout limit. Calling `delegate_task(..., async_mode=true)` immediately returns a `job_id`. Claude can then periodically poll the `check_job_status(job_id)` tool to retrieve the results once completed.
 
 ### Map-Reduce for Large Contexts
 
-`call_local(..., map_reduce=true)` automatically splits massive contexts (or large sets of files) into chunks that fit the budget's `num_ctx`. It processes each chunk concurrently (Map phase), then synthesizes the results (Reduce phase). This requires multiple LLM calls and is **opt-in only**. 
+`delegate_task(..., map_reduce=true)` automatically splits massive contexts (or large sets of files) into chunks that fit the budget's `num_ctx`. It processes each chunk concurrently (Map phase, bounded by the target provider's `concurrency`), then synthesizes the results (Reduce phase). This requires multiple LLM calls and is **opt-in only**.
 
 ## Registering with Claude Code
 
-The server is installed as an editable package, providing the `local-ai-gateway.exe` console script. Register it with Claude Code (user scope):
+The server is installed as an editable package, providing the `llm-worker-pool.exe` console script. Register it with Claude Code (user scope):
 
 ```bash
-claude mcp add -s user local-ai-gateway -- "D:\project\mcp\.venv\Scripts\local-ai-gateway.exe"
+claude mcp add -s user llm-worker-pool -- "D:\project\mcp\.venv\Scripts\llm-worker-pool.exe"
 ```
 
 Because it's installed in editable mode, any source code changes in `src/` will take effect immediately upon server restart without needing to re-register.

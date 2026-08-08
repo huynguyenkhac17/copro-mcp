@@ -5,16 +5,16 @@ import logging
 
 import pytest
 
-from local_ai_gateway.application.call_local_use_case import CallLocalUseCase
-from local_ai_gateway.application.dto import CallLocalRequest
-from local_ai_gateway.config.settings import (
+from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
+from llm_worker_pool.application.dto import DelegateTaskRequest
+from llm_worker_pool.config.settings import (
     AppConfig,
     RetryConfig,
 )
-from local_ai_gateway.domain.exceptions import ConfigurationError, ProviderUnavailableError
-from local_ai_gateway.domain.file_context import FileContextResolver
-from local_ai_gateway.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
-from local_ai_gateway.infra.logging import InvocationLogger
+from llm_worker_pool.domain.exceptions import ConfigurationError, ProviderUnavailableError
+from llm_worker_pool.domain.file_context import FileContextResolver
+from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
+from llm_worker_pool.infra.logging import InvocationLogger
 
 
 class FakeProvider:
@@ -84,8 +84,8 @@ def _use_case(
     config: AppConfig,
     profiles: dict[str, BudgetProfile],
     file_context_resolver: FileContextResolver | None = None,
-) -> CallLocalUseCase:
-    return CallLocalUseCase(
+) -> DelegateTaskUseCase:
+    return DelegateTaskUseCase(
         providers={"fake": provider},
         default_provider="fake",
         config=config,
@@ -106,7 +106,7 @@ async def test_success_text():
     )
     use_case = _use_case(provider, _config(), {"L2": _profile()})
 
-    result = await use_case.execute(CallLocalRequest(task="say hi", budget="L2"))
+    result = await use_case.execute(DelegateTaskRequest(task="say hi", budget="L2"))
 
     assert result.success is True
     assert result.content == "hello"
@@ -126,7 +126,7 @@ async def test_success_json_output():
     use_case = _use_case(provider, _config(), {"L2": _profile()})
 
     result = await use_case.execute(
-        CallLocalRequest(task="return json", budget="L2", output_format="json")
+        DelegateTaskRequest(task="return json", budget="L2", output_format="json")
     )
 
     assert result.success is True
@@ -139,7 +139,7 @@ async def test_unknown_budget_raises_configuration_error():
     use_case = _use_case(provider, _config(), {"L2": _profile()})
 
     with pytest.raises(ConfigurationError):
-        await use_case.execute(CallLocalRequest(task="task", budget="L99"))
+        await use_case.execute(DelegateTaskRequest(task="task", budget="L99"))
 
 
 @pytest.mark.asyncio
@@ -154,7 +154,7 @@ async def test_transient_error_retries_then_succeeds():
     )
     use_case = _use_case(provider, _config(max_attempts=2), {"L2": _profile()})
 
-    result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
 
     assert result.success is True
     assert provider.call_count == 2
@@ -170,7 +170,7 @@ async def test_transient_error_exhausts_retries_returns_failure_result():
     )
     use_case = _use_case(provider, _config(max_attempts=2), {"L2": _profile()})
 
-    result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
 
     assert result.success is False
     assert result.error is not None
@@ -182,7 +182,7 @@ async def test_timeout_returns_failure_result_without_raising():
     provider = FakeProvider(sleep_seconds=0.3)
     use_case = _use_case(provider, _config(), {"L2": _profile(timeout_seconds=0.05)})
 
-    result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
 
     assert result.success is False
     assert "did not respond" in (result.error or "")
@@ -210,7 +210,7 @@ async def test_empty_response_from_thinking_exhaustion_retries_with_thinking_dis
     )
     use_case = _use_case(provider, _config(), {"L2": profile})
 
-    result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
 
     assert result.success is True
     assert result.content == "actual answer"
@@ -235,7 +235,7 @@ async def test_empty_response_with_thinking_already_disabled_does_not_retry():
     )
     use_case = _use_case(provider, _config(), {"L2": profile})
 
-    result = await use_case.execute(CallLocalRequest(task="task", budget="L2"))
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
 
     assert result.success is True
     assert provider.call_count == 1
@@ -252,7 +252,7 @@ async def test_file_paths_are_merged_into_context_sent_to_provider(tmp_path):
     use_case = _use_case(provider, _config(), {"L2": _profile()}, file_context_resolver=resolver)
 
     result = await use_case.execute(
-        CallLocalRequest(task="summarize", budget="L2", file_paths=[str(f)])
+        DelegateTaskRequest(task="summarize", budget="L2", file_paths=[str(f)])
     )
 
     assert result.success is True
@@ -266,7 +266,7 @@ async def test_file_paths_without_configured_resolver_warns_disabled():
     use_case = _use_case(provider, _config(), {"L2": _profile()})  # resolver mac dinh: allowed_roots=[]
 
     result = await use_case.execute(
-        CallLocalRequest(task="summarize", budget="L2", file_paths=["D:/not/allowed/read.txt"])
+        DelegateTaskRequest(task="summarize", budget="L2", file_paths=["D:/not/allowed/read.txt"])
     )
 
     assert result.success is True

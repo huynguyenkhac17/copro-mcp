@@ -11,12 +11,12 @@ import time
 
 import httpx
 
-from local_ai_gateway.domain.exceptions import (
+from llm_worker_pool.domain.exceptions import (
     InvalidResponseError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
-from local_ai_gateway.domain.models import GenerationOptions, ProviderResponse
+from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
 
 _PROVIDER_NAME = "ollama"
 

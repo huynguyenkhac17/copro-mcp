@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from local_ai_gateway.domain.models import GenerationOptions, ProviderResponse
+from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
 
 
 @runtime_checkable

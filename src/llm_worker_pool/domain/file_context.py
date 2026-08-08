@@ -140,7 +140,7 @@ async def resolve_request_context(
     query: str,
     rag_indexer: Any | None = None,
 ) -> tuple[str | None, list[str]]:
-    """Shared by CallLocalUseCase and MapReduceOrchestrator so both build the
+    """Shared by DelegateTaskUseCase and MapReduceOrchestrator so both build the
     combined (context + file_paths) text the exact same way."""
 
     if not file_paths:

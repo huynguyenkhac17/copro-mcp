@@ -2,7 +2,7 @@
 
 This is the THINNEST layer in the system: it only performs (1) wiring - assembling
 config/provider/use case at startup, and (2) exposes exactly 1 MCP tool
-`call_local`, receives raw input, calls CallLocalUseCase, and ensures internal
+`delegate_task`, receives raw input, calls DelegateTaskUseCase, and ensures internal
 exceptions/tracebacks never leak out in an unclear format.
 
 No business logic is contained here - all decisions (which budget, which provider,
@@ -16,34 +16,34 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from local_ai_gateway import __version__
-from local_ai_gateway.application.call_local_use_case import CallLocalUseCase
-from local_ai_gateway.application.dto import CallLocalRequest, CallLocalResult
-from local_ai_gateway.application.job_manager import JobManager
-from local_ai_gateway.application.map_reduce_orchestrator import MapReduceOrchestrator
-from local_ai_gateway.config.settings import AppConfig, load_budget_profiles
-from local_ai_gateway.domain.chunker import Chunker
-from local_ai_gateway.domain.exceptions import LocalAIGatewayError
-from local_ai_gateway.domain.file_context import FileContextResolver
-from local_ai_gateway.domain.rag_indexer import RagIndexer
-from local_ai_gateway.infra.cache import InMemoryTTLCache
-from local_ai_gateway.infra.logging import InvocationLogger, configure_logging, get_logger
-from local_ai_gateway.infra.stats import GatewayStats, StatsCollector
-from local_ai_gateway.providers.ollama_embedding_provider import OllamaEmbeddingProvider
-from local_ai_gateway.providers.registry import ProviderFactory
+from llm_worker_pool import __version__
+from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
+from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
+from llm_worker_pool.application.job_manager import JobManager
+from llm_worker_pool.application.map_reduce_orchestrator import MapReduceOrchestrator
+from llm_worker_pool.config.settings import AppConfig, load_budget_profiles
+from llm_worker_pool.domain.chunker import Chunker
+from llm_worker_pool.domain.exceptions import LocalAIGatewayError
+from llm_worker_pool.domain.file_context import FileContextResolver
+from llm_worker_pool.domain.rag_indexer import RagIndexer
+from llm_worker_pool.infra.cache import InMemoryTTLCache
+from llm_worker_pool.infra.logging import InvocationLogger, configure_logging, get_logger
+from llm_worker_pool.infra.stats import GatewayStats, StatsCollector
+from llm_worker_pool.providers.ollama_embedding_provider import OllamaEmbeddingProvider
+from llm_worker_pool.providers.registry import ProviderFactory
 
-_SERVER_NAME = "local-ai-gateway"
+_SERVER_NAME = "llm-worker-pool"
 
 _logger = get_logger(__name__)
 
 
 def _build_use_case(
     config: AppConfig, stats_collector: StatsCollector
-) -> tuple[CallLocalUseCase, FileContextResolver]:
+) -> tuple[DelegateTaskUseCase, FileContextResolver]:
     budget_profiles = load_budget_profiles()
     providers = ProviderFactory(config).create_all()
     invocation_logger = InvocationLogger(
-        get_logger("local_ai_gateway.invocation"),
+        get_logger("llm_worker_pool.invocation"),
         debug_log_content=config.logging.debug_log_content,
         stats_collector=stats_collector,
     )
@@ -63,7 +63,7 @@ def _build_use_case(
         embed_provider = OllamaEmbeddingProvider(endpoint=endpoint, model=config.rag.embedding_model)
         rag_indexer = RagIndexer(config=config.rag, embedding_provider=embed_provider, chunker=chunker)
     
-    use_case = CallLocalUseCase(
+    use_case = DelegateTaskUseCase(
         providers=providers,
         default_provider=config.default_provider,
         config=config,
@@ -86,7 +86,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
     chunker = Chunker()
     map_reduce_orchestrator = MapReduceOrchestrator(use_case, chunker, file_context_resolver)
     
-    jobs_cache: InMemoryTTLCache[CallLocalResult] = InMemoryTTLCache(
+    jobs_cache: InMemoryTTLCache[DelegateTaskResult] = InMemoryTTLCache(
         max_entries=config.jobs.max_entries,
         ttl_seconds=config.jobs.ttl_seconds,
     )
@@ -98,7 +98,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
     server = MCPServer(name=_SERVER_NAME, version=__version__)
 
     @server.tool(
-        name="call_local",
+        name="delegate_task",
         description=(
             "Delegates a specific sub-task to a worker LLM (local or cloud) to save your own "
             "context/token budget. You (Claude) remain the supervisor: read the tool's output, "
@@ -132,7 +132,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "for tasks tolerant of imprecision (see policy #2), never for exact/numeric extraction."
         ),
     )
-    async def call_local(
+    async def delegate_task(
         task: str,
         provider: str | None = None,
         budget: str = "L2",
@@ -142,9 +142,9 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
         json_schema: dict[str, Any] | None = None,
         async_mode: bool = False,
         map_reduce: bool = False,
-    ) -> CallLocalResult:
+    ) -> DelegateTaskResult:
         try:
-            request = CallLocalRequest(
+            request = DelegateTaskRequest(
                 task=task,
                 provider=provider,
                 budget=budget,
@@ -154,7 +154,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                 json_schema=json_schema,
             )
         except Exception as exc:  # noqa: BLE001 - invalid input from Claude
-            return CallLocalResult(success=False, error=f"Invalid input: {exc}")
+            return DelegateTaskResult(success=False, error=f"Invalid input: {exc}")
 
         if map_reduce:
             coro = map_reduce_orchestrator.execute(request)
@@ -163,7 +163,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
 
         if async_mode:
             job_id = job_manager.submit(coro)
-            return CallLocalResult(
+            return DelegateTaskResult(
                 success=True,
                 status="running",
                 job_id=job_id,
@@ -173,23 +173,23 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             try:
                 return await coro
             except LocalAIGatewayError as exc:
-                _logger.error("call_local failed: %s", exc)
-                return CallLocalResult(success=False, budget_used=budget, error=str(exc))
+                _logger.error("delegate_task failed: %s", exc)
+                return DelegateTaskResult(success=False, budget_used=budget, error=str(exc))
 
     @server.tool(
         name="check_job_status",
         description=(
-            "Check the status of a call_local task previously submitted with async_mode=true. "
+            "Check the status of a delegate_task task previously submitted with async_mode=true. "
             "DO NOT call this in a tight loop - do other work and check back later "
             "(seconds or tens of seconds depending on the budget). If status is still 'running', "
             "it is not done yet, try again later."
         ),
     )
-    async def check_job_status(job_id: str) -> CallLocalResult:
+    async def check_job_status(job_id: str) -> DelegateTaskResult:
         try:
             return job_manager.get(job_id)
         except LocalAIGatewayError as exc:
-            return CallLocalResult(success=False, status="failed", error=str(exc))
+            return DelegateTaskResult(success=False, status="failed", error=str(exc))
 
     @server.tool(
         name="get_gateway_stats",

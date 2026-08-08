@@ -3,8 +3,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from local_ai_gateway.domain.models import GenerationOptions
-from local_ai_gateway.providers.openai_compatible_provider import OpenAICompatibleProvider
+from llm_worker_pool.domain.models import GenerationOptions
+from llm_worker_pool.providers.openai_compatible_provider import OpenAICompatibleProvider
 
 
 def _make_provider(api_keys: list[str], handler) -> OpenAICompatibleProvider:

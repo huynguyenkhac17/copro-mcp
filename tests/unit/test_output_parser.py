@@ -1,4 +1,4 @@
-from local_ai_gateway.domain.output_parser import OutputParser
+from llm_worker_pool.domain.output_parser import OutputParser
 
 
 def test_parse_plain_json():

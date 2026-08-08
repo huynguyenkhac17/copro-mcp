@@ -19,15 +19,15 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
-from local_ai_gateway.domain.exceptions import ConfigurationError
-from local_ai_gateway.domain.models import BudgetProfile, GenerationOptions
+from llm_worker_pool.domain.exceptions import ConfigurationError
+from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "default.yaml"
 _DEFAULT_BUDGETS_PATH = _REPO_ROOT / "config" / "budgets.yaml"
 
-CONFIG_PATH_ENV_VAR = "LOCAL_AI_GATEWAY_CONFIG"
-BUDGETS_PATH_ENV_VAR = "LOCAL_AI_GATEWAY_BUDGETS_CONFIG"
+CONFIG_PATH_ENV_VAR = "LLM_WORKER_POOL_CONFIG"
+BUDGETS_PATH_ENV_VAR = "LLM_WORKER_POOL_BUDGETS_CONFIG"
 
 
 def _resolve_path(env_var: str, default: Path) -> Path:
@@ -60,7 +60,7 @@ class LoggingConfig(BaseModel):
 
 
 class FileAccessConfig(BaseModel):
-    """Allows call_local to read files directly via the file_paths parameter instead
+    """Allows delegate_task to read files directly via the file_paths parameter instead
     of Claude pasting content. Default allowed_roots is empty = feature DISABLED
     (fail-closed) - must be explicitly configured to read any files.
     """
@@ -94,12 +94,12 @@ class RagConfig(BaseModel):
 
 class AppConfig(BaseSettings):
     """Root configuration. Priority sources (high -> low):
-    init kwargs > real environment variables (LOCAL_AI_GATEWAY_..., nested with
+    init kwargs > real environment variables (LLM_WORKER_POOL_..., nested with
     '__') > .env file in repo root > default.yaml.
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="LOCAL_AI_GATEWAY_",
+        env_prefix="LLM_WORKER_POOL_",
         env_nested_delimiter="__",
         env_file=_REPO_ROOT / ".env",
         yaml_file=_resolve_path(CONFIG_PATH_ENV_VAR, _DEFAULT_CONFIG_PATH),

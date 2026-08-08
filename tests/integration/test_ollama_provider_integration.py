@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_gateway.config.settings import AppConfig
-from local_ai_gateway.domain.models import GenerationOptions
-from local_ai_gateway.domain.output_parser import OutputParser
-from local_ai_gateway.providers.ollama_provider import OllamaProvider
+from llm_worker_pool.config.settings import AppConfig
+from llm_worker_pool.domain.models import GenerationOptions
+from llm_worker_pool.domain.output_parser import OutputParser
+from llm_worker_pool.providers.ollama_provider import OllamaProvider
 
 
 @pytest.fixture

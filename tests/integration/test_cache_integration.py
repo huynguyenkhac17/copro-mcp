@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from local_ai_gateway.application.call_local_use_case import CallLocalUseCase
-from local_ai_gateway.application.dto import CallLocalRequest
-from local_ai_gateway.config.settings import AppConfig, load_budget_profiles
-from local_ai_gateway.domain.file_context import FileContextResolver
-from local_ai_gateway.infra.logging import InvocationLogger
-from local_ai_gateway.providers.registry import ProviderFactory
+from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
+from llm_worker_pool.application.dto import DelegateTaskRequest
+from llm_worker_pool.config.settings import AppConfig, load_budget_profiles
+from llm_worker_pool.domain.file_context import FileContextResolver
+from llm_worker_pool.infra.logging import InvocationLogger
+from llm_worker_pool.providers.registry import ProviderFactory
 
 
 @pytest.mark.asyncio
@@ -23,7 +23,7 @@ async def test_repeated_call_with_same_file_hits_cache(app_config: AppConfig, tm
     f.write_text("The black cat is sleeping on the sofa.")
 
     providers = ProviderFactory(app_config).create_all()
-    use_case = CallLocalUseCase(
+    use_case = DelegateTaskUseCase(
         providers=providers,
         default_provider=app_config.default_provider,
         config=app_config,
@@ -32,7 +32,7 @@ async def test_repeated_call_with_same_file_hits_cache(app_config: AppConfig, tm
         file_context_resolver=FileContextResolver(allowed_roots=[tmp_path]),
     )
 
-    request = CallLocalRequest(
+    request = DelegateTaskRequest(
         task="Summarize the file content in exactly 1 short sentence.",
         budget="L1",
         file_paths=[str(f)],

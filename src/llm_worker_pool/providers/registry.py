@@ -14,16 +14,16 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 
-from local_ai_gateway.config.settings import AppConfig, ProviderInstanceConfig
-from local_ai_gateway.domain.exceptions import ConfigurationError
-from local_ai_gateway.domain.interfaces import LLMProvider
-from local_ai_gateway.domain.models import ProviderResponse
-from local_ai_gateway.infra.cache import InMemoryTTLCache
-from local_ai_gateway.infra.logging import get_logger
-from local_ai_gateway.providers.caching_provider import CachingProvider
-from local_ai_gateway.providers.concurrency_provider import ConcurrencyProvider
-from local_ai_gateway.providers.ollama_provider import OllamaProvider
-from local_ai_gateway.providers.openai_compatible_provider import OpenAICompatibleProvider
+from llm_worker_pool.config.settings import AppConfig, ProviderInstanceConfig
+from llm_worker_pool.domain.exceptions import ConfigurationError
+from llm_worker_pool.domain.interfaces import LLMProvider
+from llm_worker_pool.domain.models import ProviderResponse
+from llm_worker_pool.infra.cache import InMemoryTTLCache
+from llm_worker_pool.infra.logging import get_logger
+from llm_worker_pool.providers.caching_provider import CachingProvider
+from llm_worker_pool.providers.concurrency_provider import ConcurrencyProvider
+from llm_worker_pool.providers.ollama_provider import OllamaProvider
+from llm_worker_pool.providers.openai_compatible_provider import OpenAICompatibleProvider
 
 _logger = get_logger(__name__)
 

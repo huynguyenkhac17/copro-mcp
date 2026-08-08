@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_gateway.server import build_server
+from llm_worker_pool.server import build_server
 
 
 def test_build_server_does_not_raise():
@@ -25,4 +25,4 @@ async def test_build_server_registers_expected_tools():
     tools = await server.list_tools()
     tool_names = {tool.name for tool in tools}
 
-    assert {"call_local", "check_job_status", "get_gateway_stats"} <= tool_names
+    assert {"delegate_task", "check_job_status", "get_gateway_stats"} <= tool_names
