@@ -5,6 +5,7 @@ Can be used for Gemini (via its OpenAI-compatible endpoint), OpenAI, Groq, etc.
 
 from __future__ import annotations
 
+import itertools
 import time
 from typing import Any
 
@@ -24,13 +25,16 @@ class OpenAICompatibleProvider:
         provider_name: str,
         endpoint: str,
         model: str,
-        api_key: str,
+        api_keys: list[str],
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._provider_name = provider_name
         self._endpoint = endpoint.rstrip("/")
         self._model = model
-        self._api_key = api_key
+        # itertools.cycle().__next__() has no internal await point, so calling
+        # it from multiple concurrent coroutines on the same event loop thread
+        # cannot interleave mid-call - no lock needed.
+        self._key_cycle = itertools.cycle(api_keys)
         self._client = http_client or httpx.AsyncClient(timeout=None)
         self._owns_client = http_client is None
 
@@ -80,7 +84,7 @@ class OpenAICompatibleProvider:
                 payload["response_format"] = {"type": "json_object"}
 
         headers = {
-            "Authorization": f"Bearer {self._api_key}",
+            "Authorization": f"Bearer {next(self._key_cycle)}",
             "Content-Type": "application/json",
         }
 

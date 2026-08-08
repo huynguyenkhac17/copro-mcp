@@ -9,6 +9,9 @@ providers:
     type: ollama
     endpoint: http://localhost:11434
     model: qwen3.5:9b
+    # Max parallel requests for this provider. Omit to use the type-based default
+    # (ollama -> 1, since limited VRAM can easily overflow with concurrent
+    # large-context requests). Increase only if you have enough free VRAM.
   gemini:
     type: openai_compatible
     endpoint: https://generativelanguage.googleapis.com/v1beta/openai
@@ -16,6 +19,8 @@ providers:
     # avoiding the need to manually update when specific model versions are deprecated.
     model: gemini-flash-latest
     api_key_env: GEMINI_API_KEY
+    # api_key_envs: [GEMINI_API_KEY_1, GEMINI_API_KEY_2]  # round-robin across multiple keys
+    # concurrency: 10  # omit to use the type-based default (non-ollama -> 5)
 
 # Default timeout (seconds) if the budget does not explicitly define one.
 timeout_seconds: 60
@@ -23,12 +28,6 @@ timeout_seconds: 60
 retry:
   max_attempts: 3
   backoff_base_seconds: 0.5
-
-concurrency:
-  # Max parallel requests allowed. Default = 1 because limited VRAM can easily overflow
-  # when running multiple large-context requests simultaneously.
-  # Increase this if you monitor that you have enough free VRAM.
-  max_parallel_requests: 1
 
 logging:
   level: INFO

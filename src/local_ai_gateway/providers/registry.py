@@ -21,10 +21,17 @@ from local_ai_gateway.domain.models import ProviderResponse
 from local_ai_gateway.infra.cache import InMemoryTTLCache
 from local_ai_gateway.infra.logging import get_logger
 from local_ai_gateway.providers.caching_provider import CachingProvider
+from local_ai_gateway.providers.concurrency_provider import ConcurrencyProvider
 from local_ai_gateway.providers.ollama_provider import OllamaProvider
 from local_ai_gateway.providers.openai_compatible_provider import OpenAICompatibleProvider
 
 _logger = get_logger(__name__)
+
+# Local models are VRAM-bound (default 1 = sequential); cloud/API-based
+# provider types default to a higher parallelism since they have no such
+# constraint. Explicit `concurrency:` in config always wins over this.
+_DEFAULT_CONCURRENCY_BY_TYPE: dict[str, int] = {"ollama": 1}
+_DEFAULT_CONCURRENCY_FALLBACK = 5
 
 ProviderBuilder = Callable[[str, ProviderInstanceConfig], LLMProvider]
 
@@ -35,18 +42,26 @@ def build_ollama(name: str, config: ProviderInstanceConfig) -> LLMProvider:
     )
 
 def build_openai_compatible(name: str, config: ProviderInstanceConfig) -> LLMProvider:
-    api_key = ""
-    if config.api_key_env:
-        api_key = os.environ.get(config.api_key_env, "")
-        if not api_key:
-            raise ConfigurationError(
-                f"Provider '{name}' requires environment variable '{config.api_key_env}' which is not set or empty."
-            )
+    env_vars = [*(config.api_key_envs or []), *([config.api_key_env] if config.api_key_env else [])]
+
+    api_keys: list[str] = []
+    for env_var in env_vars:
+        value = os.environ.get(env_var, "")
+        if value and value not in api_keys:
+            api_keys.append(value)
+
+    if not api_keys:
+        checked = ", ".join(env_vars) or "(none configured)"
+        raise ConfigurationError(
+            f"Provider '{name}' requires at least one of these environment variables "
+            f"to be set and non-empty: {checked}"
+        )
+
     return OpenAICompatibleProvider(
         provider_name=name,
         endpoint=config.endpoint,
         model=config.model,
-        api_key=api_key,
+        api_keys=api_keys,
     )
 
 _REGISTRY: dict[str, ProviderBuilder] = {
@@ -81,6 +96,13 @@ class ProviderFactory:
                 # take down the whole server - skip it, other providers stay usable.
                 _logger.warning("Skipping provider '%s': %s", name, exc)
                 continue
+
+            max_parallel = instance_config.concurrency
+            if max_parallel is None:
+                max_parallel = _DEFAULT_CONCURRENCY_BY_TYPE.get(
+                    instance_config.type, _DEFAULT_CONCURRENCY_FALLBACK
+                )
+            provider = ConcurrencyProvider(provider, max_parallel)
 
             if self._config.cache.enabled:
                 cache: InMemoryTTLCache[ProviderResponse] = InMemoryTTLCache(

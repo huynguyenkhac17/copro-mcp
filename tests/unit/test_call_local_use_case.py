@@ -9,7 +9,6 @@ from local_ai_gateway.application.call_local_use_case import CallLocalUseCase
 from local_ai_gateway.application.dto import CallLocalRequest
 from local_ai_gateway.config.settings import (
     AppConfig,
-    ConcurrencyConfig,
     RetryConfig,
 )
 from local_ai_gateway.domain.exceptions import ConfigurationError, ProviderUnavailableError
@@ -73,10 +72,9 @@ def _profile(timeout_seconds: float | None = None) -> BudgetProfile:
     )
 
 
-def _config(max_attempts: int = 1, max_parallel: int = 1) -> AppConfig:
+def _config(max_attempts: int = 1) -> AppConfig:
     return AppConfig(
         retry=RetryConfig(max_attempts=max_attempts, backoff_base_seconds=0.01),
-        concurrency=ConcurrencyConfig(max_parallel_requests=max_parallel),
         timeout_seconds=5.0,
     )
 
@@ -188,20 +186,6 @@ async def test_timeout_returns_failure_result_without_raising():
 
     assert result.success is False
     assert "did not respond" in (result.error or "")
-
-
-@pytest.mark.asyncio
-async def test_concurrency_semaphore_limits_parallel_provider_calls():
-    provider = FakeProvider(sleep_seconds=0.1)
-    use_case = _use_case(provider, _config(max_parallel=1), {"L2": _profile()})
-
-    await asyncio.gather(
-        use_case.execute(CallLocalRequest(task="a", budget="L2")),
-        use_case.execute(CallLocalRequest(task="b", budget="L2")),
-        use_case.execute(CallLocalRequest(task="c", budget="L2")),
-    )
-
-    assert provider.max_concurrent_calls == 1
 
 
 @pytest.mark.asyncio

@@ -40,15 +40,18 @@ class ProviderInstanceConfig(BaseModel):
     endpoint: str
     model: str
     api_key_env: str | None = None
+    api_key_envs: list[str] | None = None
+    """Multiple env var names holding API keys, round-robined per request
+    (see providers/openai_compatible_provider.py). Combined with the legacy
+    single-key api_key_env if both are set."""
+    concurrency: int | None = None
+    """Max parallel generate() calls for this provider instance. None = use
+    the type-based default (see providers/registry.py)."""
 
 
 class RetryConfig(BaseModel):
     max_attempts: int = 3
     backoff_base_seconds: float = 0.5
-
-
-class ConcurrencyConfig(BaseModel):
-    max_parallel_requests: int = 1
 
 
 class LoggingConfig(BaseModel):
@@ -107,7 +110,6 @@ class AppConfig(BaseSettings):
     default_provider: str = "ollama"
     timeout_seconds: float = 60.0
     retry: RetryConfig = Field(default_factory=RetryConfig)
-    concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     file_access: FileAccessConfig = Field(default_factory=FileAccessConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)

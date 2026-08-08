@@ -47,9 +47,6 @@ class CallLocalUseCase:
             allowed_roots=[]
         )
         self._rag_indexer = rag_indexer
-        # Limited GPU VRAM might easily overflow if multiple requests with large 
-        # contexts run in parallel. Thus, we limit concurrent provider calls.
-        self._semaphore = asyncio.Semaphore(config.concurrency.max_parallel_requests)
 
     async def execute(self, request: CallLocalRequest) -> CallLocalResult:
         profile = self.resolve_budget(request.budget)
@@ -220,12 +217,11 @@ class CallLocalUseCase:
         options: GenerationOptions,
         timeout: float,
     ) -> ProviderResponse:
-        async with self._semaphore:
-            return await asyncio.wait_for(
-                with_backoff(
-                    lambda: provider.generate(prompt, options),
-                    max_attempts=self._config.retry.max_attempts,
-                    backoff_base_seconds=self._config.retry.backoff_base_seconds,
-                ),
-                timeout=timeout,
-            )
+        return await asyncio.wait_for(
+            with_backoff(
+                lambda: provider.generate(prompt, options),
+                max_attempts=self._config.retry.max_attempts,
+                backoff_base_seconds=self._config.retry.backoff_base_seconds,
+            ),
+            timeout=timeout,
+        )
