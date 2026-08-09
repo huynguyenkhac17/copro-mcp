@@ -122,9 +122,16 @@ class OpenAICompatibleProvider:
 
         try:
             choice = data["choices"][0]
-            content = choice["message"]["content"]
+            message = choice["message"]
+
+            # Handle Gemini's response format which may include extra_content with thinking state
+            if isinstance(message, dict):
+                content = message.get("content")
+            else:
+                content = message
+
             finish_reason = choice.get("finish_reason")
-            
+
             usage = data.get("usage", {})
             tokens_used = usage.get("total_tokens")
         except (KeyError, IndexError, TypeError) as exc:
