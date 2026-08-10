@@ -54,9 +54,9 @@ mcp/
 ## Prerequisites
 
 - Python ≥ 3.11
-- [Ollama](https://ollama.com) running locally (`ollama serve`, default `http://localhost:11434`) with a pulled model (default `qwen3.5:9b`):
+- [Ollama](https://ollama.com) running locally (`ollama serve`, default `http://localhost:11434`) with a pulled model (default `qwen2.5-coder:7b`):
   ```bash
-  ollama pull qwen3.5:9b
+  ollama pull qwen2.5-coder:7b
   ```
 - *(Optional)* To use the `gemini` provider out-of-the-box, set the `GEMINI_API_KEY` environment variable. If omitted, the gemini provider is **skipped with a warning**, and the server will continue running normally with local models.
 - *(Optional)* To use RAG (`rag.enabled: true`), pull an embedding model (default `nomic-embed-text`):
@@ -91,7 +91,7 @@ providers:
   ollama:
     type: ollama
     endpoint: http://localhost:11434
-    model: qwen3.5:9b
+    model: qwen2.5-coder:7b
   gemini:
     type: openai_compatible   # Compatible with Gemini/OpenAI/Groq
     endpoint: https://generativelanguage.googleapis.com/v1beta/openai
@@ -113,7 +113,7 @@ Each provider runs behind its own concurrency limit (`ConcurrencyProvider`), so 
 | `L2` | Balanced — summarizing, moderate refactoring, code explanation | disabled | 12288 | 1024 | 60s |
 | `L3` | Highest quality — architecture analysis, bug finding, reading multiple files | default | 24576 | 4096 | 180s |
 
-> Note: For models with "thinking" capabilities (like `qwen3.5`), enabling thinking with a small `num_predict` may cause the model to consume all tokens on internal reasoning, returning an empty response. Thus, `think: false` is enforced for L1 and L2 budgets to guarantee output.
+> Note: For models with "thinking" capabilities (like `qwen3`), enabling thinking with a small `num_predict` may cause the model to consume all tokens on internal reasoning, returning an empty response. Thus, `think: false` is enforced for L1 and L2 budgets to guarantee output.
 
 ### Direct File Access (`file_paths`)
 

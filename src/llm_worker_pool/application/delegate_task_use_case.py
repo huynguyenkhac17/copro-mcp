@@ -130,7 +130,7 @@ class DelegateTaskUseCase:
 
         retried_without_thinking = False
         if self._looks_thinking_exhausted(response, options) and options.think is not False:
-            # Thinking-capable models (e.g. qwen3.5) can burn the entire num_predict
+            # Thinking-capable models (e.g. qwen3) can burn the entire num_predict
             # budget on internal reasoning, leaving zero tokens for the actual answer.
             # Rather than surface an empty result, retry once with thinking forced off.
             fallback_options = options.model_copy(update={"think": False})

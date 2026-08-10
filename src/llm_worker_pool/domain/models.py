@@ -27,7 +27,7 @@ class GenerationOptions(BaseModel):
     stop: list[str] = Field(default_factory=list)
     format: Literal["json"] | dict[str, Any] | None = None
     think: bool | None = None
-    """Enable/disable 'thinking' for reasoning-capable models (e.g. qwen3.5). None = model default.
+    """Enable/disable 'thinking' for reasoning-capable models (e.g. qwen3). None = model default.
     Thinking models can consume all num_predict for internal reasoning
     leaving zero tokens for the final answer - budgets needing high speed (L1)
     should set think=False."""

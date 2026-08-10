@@ -1,6 +1,6 @@
 # Default configuration for the LLM Worker Pool.
 # Any value here can be overridden by environment variables prefixed with
-# LLM_WORKER_POOL_ (e.g., LLM_WORKER_POOL_OLLAMA__MODEL=qwen3.5:9b),
+# LLM_WORKER_POOL_ (e.g., LLM_WORKER_POOL_OLLAMA__MODEL=qwen2.5-coder:7b),
 # or by pointing to a different config file via LLM_WORKER_POOL_CONFIG.
 
 default_provider: gemini
@@ -8,7 +8,7 @@ providers:
   ollama:
     type: ollama
     endpoint: http://localhost:11434
-    model: qwen3.5:9b
+    model: qwen2.5-coder:7b
     # Max parallel requests for this provider. Omit to use the type-based default
     # (ollama -> 1, since limited VRAM can easily overflow with concurrent
     # large-context requests). Increase only if you have enough free VRAM.
@@ -18,8 +18,8 @@ providers:
     # "-latest" is a dynamic alias pointing to the latest stable flash version,
     # avoiding the need to manually update when specific model versions are deprecated.
     model: gemini-flash-latest
-    api_key_env: GEMINI_API_KEY
-    # api_key_envs: [GEMINI_API_KEY_1, GEMINI_API_KEY_2]  # round-robin across multiple keys
+    # api_key_env: GEMINI_API_KEY
+    api_key_envs: ["GEMINI_API_KEY", GEMINI_API_KEY_1, GEMINI_API_KEY_2]  # round-robin across multiple keys
     # concurrency: 10  # omit to use the type-based default (non-ollama -> 5)
 
 # Default timeout (seconds) if the budget does not explicitly define one.
@@ -54,7 +54,7 @@ jobs:
   max_entries: 1000
 
 rag:
-  enabled: false
+  enabled: true
   embedding_model: nomic-embed-text
   chunk_size_tokens: 256
   overlap_tokens: 32

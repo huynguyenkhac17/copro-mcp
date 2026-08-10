@@ -24,8 +24,9 @@ budgets:
       num_ctx: 4096
       seed: 42
       stop: []
-      # qwen3.5 is "thinking" model: if turn on thinking, it will use all
-      # num_predict for thinking and no token left for response. L1 prioritize speed so turn off thinking.
+      # think=false is harmless for non-thinking models (like qwen2.5-coder) and
+      # required for thinking models to avoid burning num_predict on reasoning.
+      # Kept off by default here since L1 prioritizes speed.
       think: false
 
   L2:

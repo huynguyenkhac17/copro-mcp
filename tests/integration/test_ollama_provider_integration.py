@@ -1,5 +1,5 @@
 """Integration test: calls real Ollama with the model configured in default.yaml
-(currently qwen3.5:9b). Skipped automatically if Ollama is not running (see conftest).
+(currently qwen2.5-coder:7b). Skipped automatically if Ollama is not running (see conftest).
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ async def test_generate_plain_text(provider: OllamaProvider):
         num_predict=16,
         num_ctx=2048,
         seed=42,
-        # qwen3.5 is a thinking model - disable thinking to answer directly,
-        # otherwise a small num_predict will be consumed entirely by the thinking part.
+        # think=false is a no-op for non-thinking models like qwen2.5-coder, and
+        # required for thinking models so a small num_predict isn't consumed by reasoning.
         think=False,
     )
 
