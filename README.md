@@ -81,6 +81,8 @@ Everything is configuration-driven. **No code modifications are required.**
 You can override settings via environment variables (prefix `LLM_WORKER_POOL_`, use `__` for nested fields) or via a `.env` file at the repository root. Priority (highest to lowest):
 `init kwargs > real environment variables > .env file > default.yaml`
 
+> Note: provider API key variables (`api_key_env`/`api_key_envs`, e.g. `GEMINI_API_KEY`) follow the same priority but are a special case: their variable *names* are arbitrary (whatever you write in `default.yaml`), not `LLM_WORKER_POOL_`-prefixed settings. `.env` is loaded via `python-dotenv` directly into the process environment at startup, so setting them there works exactly like exporting real OS environment variables — a real OS env var of the same name still wins if both are set.
+
 ### Providers
 
 `config/default.yaml` declares multiple providers simultaneously. Each provider has a name and a `type` (the implementation class in `providers/registry.py`):

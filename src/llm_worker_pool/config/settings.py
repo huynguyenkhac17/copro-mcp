@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from pydantic_settings import (
     BaseSettings,
@@ -25,6 +26,13 @@ from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "default.yaml"
 _DEFAULT_BUDGETS_PATH = _REPO_ROOT / "config" / "budgets.yaml"
+
+# pydantic-settings' own dotenv source only feeds declared AppConfig fields - it never
+# touches os.environ. But provider API keys (api_key_env/api_key_envs) are arbitrary
+# variable names read directly via os.environ.get() in providers/registry.py, so without
+# this they'd be invisible unless exported as real OS environment variables. override=False
+# keeps real env vars taking priority over .env, matching the documented priority order.
+load_dotenv(_REPO_ROOT / ".env", override=False)
 
 CONFIG_PATH_ENV_VAR = "LLM_WORKER_POOL_CONFIG"
 BUDGETS_PATH_ENV_VAR = "LLM_WORKER_POOL_BUDGETS_CONFIG"
