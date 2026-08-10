@@ -58,7 +58,7 @@ mcp/
   ```bash
   ollama pull qwen2.5-coder:7b
   ```
-- *(Optional)* To use the `gemini` provider out-of-the-box, set the `GEMINI_API_KEY` environment variable. If omitted, the gemini provider is **skipped with a warning**, and the server will continue running normally with local models.
+- To use the `gemini` provider (the **default** provider — cloud reasoning is prioritized over the local model, which is only used for tasks that specifically need to stay local), set the `GEMINI_API_KEY` environment variable. If omitted, the gemini provider is **skipped with a warning**, and the server falls back to the local model.
 - *(Optional)* To use RAG (`rag.enabled: true`), pull an embedding model (default `nomic-embed-text`):
   ```bash
   ollama pull nomic-embed-text
@@ -88,7 +88,7 @@ You can override settings via environment variables (prefix `LLM_WORKER_POOL_`, 
 `config/default.yaml` declares multiple providers simultaneously. Each provider has a name and a `type` (the implementation class in `providers/registry.py`):
 
 ```yaml
-default_provider: ollama
+default_provider: gemini
 providers:
   ollama:
     type: ollama
@@ -103,7 +103,7 @@ providers:
     # concurrency: 10   # optional: max parallel requests for this provider
 ```
 
-The `delegate_task` tool accepts a `provider: str | None` parameter to select the backend per invocation (defaults to `default_provider`). This allows routing heavy reasoning to `gemini` while keeping lightweight tasks on `ollama`.
+The `delegate_task` tool accepts a `provider: str | None` parameter to select the backend per invocation (defaults to `default_provider`). Routing is decided by **confidentiality, not by whether data is on local disk**: send only genuinely sensitive content (secrets, credentials, proprietary data that must not leave the machine) to `ollama`, and route **everything else** — including summarizing ordinary local project code — to a cloud provider (the default). Note that `file_paths` reads files server-side and works with *any* provider, so summarizing a local codebase on the cloud is fully supported; cloud is in fact preferred for multi-file work because it runs many workers in parallel (concurrency + multi-key round-robin), whereas `ollama` is serial by default. For large local codebases, combine `file_paths` with `map_reduce=true` on a cloud provider.
 
 Each provider runs behind its own concurrency limit (`ConcurrencyProvider`), so a slow/serial local model never blocks parallel calls to a cloud provider (e.g. during Map-Reduce). If `concurrency` is omitted, it defaults by provider `type`: `ollama` -> 1 (VRAM-safe), everything else -> 5. When `api_key_envs` lists multiple keys, requests round-robin across them to spread load/rate limits.
 
