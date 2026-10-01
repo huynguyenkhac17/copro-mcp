@@ -418,3 +418,113 @@ async def test_no_retry_when_reasoning_effort_already_at_floor():
 
     assert provider.call_count == 1
     assert "empty_response_possible_thinking_exhaustion" in result.warnings
+
+
+class NamedFakeProvider(FakeProvider):
+    def __init__(self, name: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._name = name
+
+    @property
+    def provider_name(self) -> str:
+        return self._name
+
+
+def _ok(name: str) -> ProviderResponse:
+    return ProviderResponse(raw_text=f"from {name}", provider_name=name, model_name="m", latency_ms=1.0)
+
+
+def _chain_use_case(
+    providers: dict[str, FakeProvider],
+    fallbacks: dict[str, list[str]],
+    default_provider: str = "gemini",
+    profile: BudgetProfile | None = None,
+) -> DelegateTaskUseCase:
+    config = _config()
+    config.fallbacks = fallbacks
+    return DelegateTaskUseCase(
+        providers=providers,
+        default_provider=default_provider,
+        config=config,
+        budget_profiles={"L2": profile or _profile()},
+        invocation_logger=InvocationLogger(logging.getLogger("test.invocation")),
+    )
+
+
+@pytest.mark.asyncio
+async def test_overloaded_provider_falls_back_to_next_tier():
+    gemini = NamedFakeProvider("gemini", responses=[ProviderUnavailableError("status 503:\n  overloaded")])
+    lite = NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    groq = NamedFakeProvider("groq")
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite, "groq": groq},
+        {"gemini": ["gemini-lite", "groq"]},
+    )
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert result.raw_text == "from gemini-lite"
+    assert groq.call_count == 0
+    assert any(
+        w.startswith("fallback_used:gemini-lite after gemini: status 503: overloaded")
+        for w in result.warnings
+    )
+
+
+@pytest.mark.asyncio
+async def test_chain_reaches_last_tier_and_skips_unconfigured_fallback():
+    gemini = NamedFakeProvider("gemini", responses=[ProviderUnavailableError("503")])
+    groq = NamedFakeProvider("groq", responses=[_ok("groq")])
+    # gemini-lite is named in the chain but absent (e.g. skipped for missing keys)
+    use_case = _chain_use_case({"gemini": gemini, "groq": groq}, {"gemini": ["gemini-lite", "groq"]})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert result.provider == "groq"
+
+
+@pytest.mark.asyncio
+async def test_timeout_on_primary_falls_back():
+    gemini = NamedFakeProvider("gemini", sleep_seconds=0.3)
+    groq = NamedFakeProvider("groq", responses=[_ok("groq")])
+    use_case = _chain_use_case(
+        {"gemini": gemini, "groq": groq},
+        {"gemini": ["groq"]},
+        profile=_profile(timeout_seconds=0.05),
+    )
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert result.provider == "groq"
+
+
+@pytest.mark.asyncio
+async def test_all_tiers_failing_reports_every_error():
+    gemini = NamedFakeProvider("gemini", responses=[ProviderUnavailableError("503 overloaded")])
+    groq = NamedFakeProvider("groq", responses=[ProviderUnavailableError("429 quota")])
+    use_case = _chain_use_case({"gemini": gemini, "groq": groq}, {"gemini": ["groq"]})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is False
+    assert result.error == "All providers failed: gemini: 503 overloaded; groq: 429 quota"
+
+
+@pytest.mark.asyncio
+async def test_provider_without_chain_never_falls_back():
+    ollama = NamedFakeProvider("ollama", responses=[ProviderUnavailableError("ollama down")])
+    groq = NamedFakeProvider("groq")
+    use_case = _chain_use_case(
+        {"ollama": ollama, "groq": groq},
+        {"gemini": ["groq"]},
+        default_provider="ollama",
+    )
+
+    result = await use_case.execute(DelegateTaskRequest(task="secret", budget="L2"))
+
+    assert result.success is False
+    assert result.error == "ollama down"
+    assert groq.call_count == 0

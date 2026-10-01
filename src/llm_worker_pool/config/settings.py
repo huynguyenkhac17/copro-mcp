@@ -116,6 +116,11 @@ class AppConfig(BaseSettings):
 
     providers: dict[str, ProviderInstanceConfig] = Field(default_factory=dict)
     default_provider: str = "ollama"
+    fallbacks: dict[str, list[str]] = Field(default_factory=dict)
+    """Per-provider fallback chain, tried in order when the provider fails even after
+    retries (e.g. {"gemini": ["gemini-lite", "groq"]}). A provider with no entry never
+    falls back - that is what keeps a request sent to local ollama for confidentiality
+    from silently leaking to a cloud API."""
     timeout_seconds: float = 60.0
     retry: RetryConfig = Field(default_factory=RetryConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)

@@ -88,47 +88,48 @@ class DelegateTaskUseCase:
         timeout = profile.timeout_seconds or self._config.timeout_seconds
         start = time.monotonic()
 
-        try:
-            response = await self._call_provider(provider, built.user_prompt, options, timeout)
-        except TimeoutError:
-            latency_ms = (time.monotonic() - start) * 1000
-            error = (
-                f"Local model did not respond within {timeout}s (budget={request.budget}). "
-                "Try a lower budget or truncate the context."
-            )
+        # Walk the fallback chain: a 503 "model overloaded" hits every key of a provider
+        # alike, so retrying the same provider cannot help - only another model/vendor can.
+        response: ProviderResponse | None = None
+        failures: list[str] = []
+        for tier_name in self._fallback_chain(provider_name):
+            tier = self._providers.get(tier_name)
+            if tier is None:
+                continue  # fallback skipped at startup (e.g. its API keys are unset)
+            tier_start = time.monotonic()
+            try:
+                response = await self._call_provider(tier, built.user_prompt, options, timeout)
+            except TimeoutError:
+                error = (
+                    f"{tier.provider_name} did not respond within {timeout}s "
+                    f"(budget={request.budget}). Try a lower budget or truncate the context."
+                )
+            except LocalAIGatewayError as exc:
+                error = str(exc)
+            else:
+                provider = tier
+                break
+
             self._logger.log_failure(
                 budget=request.budget,
-                provider=provider.provider_name,
-                model=provider.model_name,
-                latency_ms=latency_ms,
+                provider=tier.provider_name,
+                model=tier.model_name,
+                latency_ms=(time.monotonic() - tier_start) * 1000,
                 error=error,
                 task=request.task,
             )
+            failures.append(f"{tier.provider_name}: {self._short_error(error)}")
+            provider = tier
+
+        if response is None:
             return DelegateTaskResult(
                 success=False,
                 budget_used=request.budget,
                 provider=provider.provider_name,
                 model=provider.model_name,
-                latency_ms=latency_ms,
-                error=error,
-            )
-        except LocalAIGatewayError as exc:
-            latency_ms = (time.monotonic() - start) * 1000
-            self._logger.log_failure(
-                budget=request.budget,
-                provider=provider.provider_name,
-                model=provider.model_name,
-                latency_ms=latency_ms,
-                error=str(exc),
-                task=request.task,
-            )
-            return DelegateTaskResult(
-                success=False,
-                budget_used=request.budget,
-                provider=provider.provider_name,
-                model=provider.model_name,
-                latency_ms=latency_ms,
-                error=str(exc),
+                latency_ms=(time.monotonic() - start) * 1000,
+                # A single-provider chain keeps the original, unabridged error.
+                error=error if len(failures) == 1 else "All providers failed: " + "; ".join(failures),
             )
 
         retried_without_thinking = False
@@ -157,6 +158,10 @@ class DelegateTaskUseCase:
                 pass  # keep the original (empty) response, fall through to the warning below
 
         warnings = [*file_warnings, *built.warnings]
+        if failures:
+            warnings.append(
+                f"fallback_used:{provider.provider_name} after " + "; ".join(failures)
+            )
         content: object = response.raw_text
 
         if retried_without_thinking:
@@ -236,6 +241,19 @@ class DelegateTaskUseCase:
                 f"Budget '{budget}' does not exist. Available budgets: {available}"
             )
         return profile
+
+    def _fallback_chain(self, provider_name: str) -> list[str]:
+        chain = [provider_name]
+        for name in self._config.fallbacks.get(provider_name, []):
+            if name not in chain:
+                chain.append(name)
+        return chain
+
+    @staticmethod
+    def _short_error(error: str, limit: int = 160) -> str:
+        """Provider errors embed multi-line JSON bodies; flatten them for a one-line summary."""
+        flat = " ".join(error.split())
+        return flat if len(flat) <= limit else flat[: limit - 3] + "..."
 
     @staticmethod
     def _resolve_format(profile: BudgetProfile, request: DelegateTaskRequest) -> object:
