@@ -57,6 +57,10 @@ class InvocationLogger:
         tokens_used: int | None,
         cached: bool,
         warnings: list[str],
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        thinking_tokens: int | None = None,
+        truncated: bool = False,
         task: str | None = None,
         raw_response: str | None = None,
     ) -> None:
@@ -67,6 +71,10 @@ class InvocationLogger:
                 cached=cached,
                 tokens_used=tokens_used,
                 latency_ms=latency_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                thinking_tokens=thinking_tokens,
+                truncated=truncated,
             )
 
         fields: dict[str, Any] = {
@@ -77,6 +85,8 @@ class InvocationLogger:
             "model": model,
             "latency_ms": round(latency_ms, 1),
             "tokens_used": tokens_used,
+            "thinking_tokens": thinking_tokens,
+            "truncated": truncated,
             "warnings": warnings,
         }
         fields.update(self._content_fields(task, raw_response))

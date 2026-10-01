@@ -38,6 +38,16 @@ class DelegateTaskResult(BaseModel):
     budget_used: str = ""
     latency_ms: float = 0.0
     tokens_used: int | None = None
+    """Grand total billed: prompt + thinking + completion."""
+
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    thinking_tokens: int | None = None
+    """Charged inside tokens_used but reported in neither of the other two."""
+
+    truncated: bool = False
+    """The answer was cut off at the output ceiling rather than finished."""
+
     cached: bool = False
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None

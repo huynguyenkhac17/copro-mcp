@@ -43,6 +43,10 @@ class OllamaProvider:
     def model_name(self) -> str:
         return self._model
 
+    @property
+    def thinking_option(self) -> str | None:
+        return "think"
+
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         messages: list[dict[str, str]] = []
         if options.system_prompt:
@@ -103,12 +107,24 @@ class OllamaProvider:
                 f"Ollama response missing 'message.content' field: {data}"
             ) from exc
 
+        # Ollama reports the two halves separately and no total; sum them so that
+        # tokens_used means the same thing across every provider.
+        prompt_tokens = data.get("prompt_eval_count")
+        completion_tokens = data.get("eval_count")
+        tokens_used = (
+            (prompt_tokens or 0) + (completion_tokens or 0)
+            if prompt_tokens is not None or completion_tokens is not None
+            else None
+        )
+
         return ProviderResponse(
             raw_text=content,
             provider_name=_PROVIDER_NAME,
             model_name=self._model,
             latency_ms=latency_ms,
-            tokens_used=data.get("eval_count"),
+            tokens_used=tokens_used,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             finish_reason=data.get("done_reason"),
         )
 

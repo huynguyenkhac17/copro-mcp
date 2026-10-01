@@ -1,17 +1,35 @@
 # Execution budgets definitions (L1/L2/L3).
 # Add new budget = add 1 entry here, NO code changes needed.
 #
-# Note on num_ctx: For limited VRAM hardware, large models (e.g. 9B parameters)
-# take up significant memory. KV cache increases with num_ctx, so the values
-# below are chosen conservatively to ensure stability without exhausting VRAM.
-# You can tune these up if you monitor that you have enough free memory.
+# These are tuned for CLOUD models (the default provider), not for a local 9B.
+# The earlier values were sized for qwen3 9B on limited VRAM, where a small
+# num_predict was the cheapest guard against runaway generation. On a cloud model
+# that same ceiling is the main cause of cut-off answers, because reasoning models
+# bill their internal thinking against this very budget: measured on
+# gemini-flash-latest, a trivial prompt spent 979 tokens thinking and had only 41
+# left to answer with - and still stopped at finish_reason=length.
+#
+# Two knobs decide how that budget is split:
+#   num_predict      - hard ceiling on (thinking + answer) for one call
+#   reasoning_effort - how much of it the model may spend thinking.
+#                      Gemini's OpenAI-compatible shim takes low/medium/high;
+#                      "none" is rejected with HTTP 400, so "low" is the floor.
+#
+# Ollama-only fields (top_k, repeat_penalty, seed, think, num_ctx) are ignored by
+# the OpenAI-compatible provider - it sends only model, messages, temperature,
+# top_p, max_tokens, stop, reasoning_effort and response_format. Tuning them has
+# no effect on cloud providers.
+#
+# num_ctx additionally caps how much CONTEXT gets sent (PromptBuilder truncates
+# against it), so on cloud it should reflect the model's real input window rather
+# than local VRAM. gemini-flash accepts ~1M input tokens.
 
 budgets:
   L1:
     description: >
       Fast, deterministic, used for simple tasks: categorization, extraction,
       short answers without deep reasoning.
-    timeout_seconds: 20
+    timeout_seconds: 45
     options:
       system_prompt: >
         You are a fast-acting assistant. Provide concise, accurate answers that
@@ -20,20 +38,21 @@ budgets:
       top_p: 0.8
       top_k: 20
       repeat_penalty: 1.1
-      num_predict: 256
-      num_ctx: 4096
+      num_predict: 4096
+      num_ctx: 131072
       seed: 42
       stop: []
       # think=false is harmless for non-thinking models (like qwen2.5-coder) and
       # required for thinking models to avoid burning num_predict on reasoning.
       # Kept off by default here since L1 prioritizes speed.
       think: false
+      reasoning_effort: low
 
   L2:
     description: >
       Balancing speed and quality: summarizing files,
       moderate refactoring, and explaining code.
-    timeout_seconds: 60
+    timeout_seconds: 120
     options:
       system_prompt: >
         You are a software engineer supporting Claude Code. Read the
@@ -43,15 +62,16 @@ budgets:
       top_p: 0.9
       top_k: 40
       repeat_penalty: 1.1
-      num_predict: 1024
-      num_ctx: 12288
+      num_predict: 16384
+      num_ctx: 262144
       stop: []
+      reasoning_effort: low
 
   L3:
     description: >
       Highest quality, large context: reading multiple files, architectural
       analysis, implementation planning, candidate bug discovery.
-    timeout_seconds: 180
+    timeout_seconds: 300
     options:
       system_prompt: >
         You are a senior software architect. Analyze carefully,
@@ -62,6 +82,9 @@ budgets:
       top_p: 0.95
       top_k: 60
       repeat_penalty: 1.05
-      num_predict: 4096
-      num_ctx: 24576
+      num_predict: 32768
+      num_ctx: 524288
       stop: []
+      # L3 is the budget that exists for hard reasoning, so thinking is worth
+      # paying for here - but it now competes for a 32k ceiling, not a 4k one.
+      reasoning_effort: medium

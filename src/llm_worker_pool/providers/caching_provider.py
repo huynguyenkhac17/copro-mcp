@@ -30,6 +30,10 @@ class CachingProvider:
     def model_name(self) -> str:
         return self._inner.model_name
 
+    @property
+    def thinking_option(self) -> str | None:
+        return getattr(self._inner, "thinking_option", "think")
+
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         key = self._make_key(prompt, options)
 

@@ -28,7 +28,7 @@ from llm_worker_pool.domain.file_context import FileContextResolver
 from llm_worker_pool.domain.rag_indexer import RagIndexer
 from llm_worker_pool.infra.cache import InMemoryTTLCache
 from llm_worker_pool.infra.logging import InvocationLogger, configure_logging, get_logger
-from llm_worker_pool.infra.stats import GatewayStats, StatsCollector
+from llm_worker_pool.infra.stats import GatewayStats, StatsCollector, default_snapshot_path
 from llm_worker_pool.providers.ollama_embedding_provider import OllamaEmbeddingProvider
 from llm_worker_pool.providers.registry import ProviderFactory
 
@@ -80,7 +80,9 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
     config = config or AppConfig()
     configure_logging(config.logging.level)
 
-    stats_collector = StatsCollector()
+    # Mirrored to disk so `worker-stats` / the /worker slash command can read the
+    # counters without an MCP round-trip through the model.
+    stats_collector = StatsCollector(snapshot_path=default_snapshot_path())
     use_case, file_context_resolver = _build_use_case(config, stats_collector)
     
     chunker = Chunker()

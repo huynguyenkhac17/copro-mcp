@@ -29,6 +29,10 @@ class ConcurrencyProvider:
     def model_name(self) -> str:
         return self._inner.model_name
 
+    @property
+    def thinking_option(self) -> str | None:
+        return getattr(self._inner, "thinking_option", "think")
+
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         async with self._semaphore:
             return await self._inner.generate(prompt, options)

@@ -23,6 +23,7 @@ dev = [
 
 [project.scripts]
 llm-worker-pool = "llm_worker_pool.server:main"
+worker-stats = "llm_worker_pool.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

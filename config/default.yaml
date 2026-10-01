@@ -8,7 +8,10 @@ providers:
   ollama:
     type: ollama
     endpoint: http://localhost:11434
-    model: qwen2.5-coder:7b
+    # Must match a tag actually present in `ollama list` - the previous value
+    # (qwen2.5-coder:7b) was not installed, which failed the integration tests
+    # with "model not found". :latest resolves to the same 7B weights.
+    model: qwen2.5-coder:latest
     # Max parallel requests for this provider. Omit to use the type-based default
     # (ollama -> 1, since limited VRAM can easily overflow with concurrent
     # large-context requests). Increase only if you have enough free VRAM.
@@ -19,8 +22,43 @@ providers:
     # avoiding the need to manually update when specific model versions are deprecated.
     model: gemini-flash-latest
     # api_key_env: GEMINI_API_KEY
-    api_key_envs: ["GEMINI_API_KEY", GEMINI_API_KEY_1, GEMINI_API_KEY_2]  # round-robin across multiple keys
+    # Round-robin across 6 keys. GEMINI_API_KEY is a Windows user-level env var;
+    # the other five live in .env. load_dotenv runs with override=False so a real
+    # env var always beats .env - never declare the same name twice, or one key
+    # gets counted twice and the rotation is skewed.
+    #
+    # This list previously named GEMINI_API_KEY_1 and _2, but neither variable was
+    # ever set, so the pool was in fact running on a SINGLE key and hit 429 almost
+    # immediately - while the log only said "quota exceeded", never "missing key".
+    api_key_envs:
+      - GEMINI_API_KEY
+      - GEMINI_API_KEY_2
+      - GEMINI_API_KEY_3
+      - GEMINI_API_KEY_4
+      - GEMINI_API_KEY_5
+      - GEMINI_API_KEY_6
     # concurrency: 10  # omit to use the type-based default (non-ollama -> 5)
+
+  # Groq speaks the OpenAI protocol, so it reuses the openai_compatible adapter -
+  # no new code. Its value here is not quality but INFRASTRUCTURE INDEPENDENCE:
+  # when Gemini returns 503 because Google itself is overloaded, every Gemini key
+  # fails alike, and only a different vendor can rescue the run.
+  #
+  # Model picked from this account's real catalogue (listed via /v1/models):
+  # openai/gpt-oss-120b is the strongest chat model served there.
+  #
+  # NOTE: keep this file pure ASCII. The YAML loader opens it with the platform
+  # default encoding (cp1252 on Windows), so a single accented character here
+  # crashes the server at startup with a UnicodeDecodeError.
+  groq:
+    type: openai_compatible
+    endpoint: https://api.groq.com/openai/v1
+    model: openai/gpt-oss-120b
+    api_key_envs:
+      - GROQ_API_KEY_1
+      - GROQ_API_KEY_2
+      - GROQ_API_KEY_3
+      - GROQ_API_KEY_4
 
 # Default timeout (seconds) if the budget does not explicitly define one.
 timeout_seconds: 60

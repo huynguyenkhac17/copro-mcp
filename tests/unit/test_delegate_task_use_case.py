@@ -271,3 +271,150 @@ async def test_file_paths_without_configured_resolver_warns_disabled():
 
     assert result.success is True
     assert any(w.startswith("file_access_disabled") for w in result.warnings)
+
+
+class ReasoningProvider(FakeProvider):
+    """A cloud-style backend: limits reasoning via reasoning_effort, not `think`."""
+
+    @property
+    def thinking_option(self) -> str | None:
+        return "reasoning_effort"
+
+
+@pytest.mark.asyncio
+async def test_truncated_answer_is_flagged_instead_of_passing_as_complete():
+    """A cut-off answer used to come back success=True with no warnings at all."""
+    provider = FakeProvider(
+        responses=[
+            ProviderResponse(
+                raw_text="an answer that stops mid-sen",
+                provider_name="fake",
+                model_name="fake-model",
+                latency_ms=5.0,
+                finish_reason="length",
+                prompt_tokens=100,
+                completion_tokens=512,
+                tokens_used=612,
+            ),
+        ]
+    )
+    use_case = _use_case(provider, _config(), {"L2": _profile()})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert result.truncated is True
+    assert any("output_truncated_at_max_tokens" in w for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_thinking_tokens_are_derived_and_reported():
+    """Reasoning is billed inside the total but absent from prompt and completion."""
+    provider = FakeProvider(
+        responses=[
+            ProviderResponse(
+                raw_text="short answer",
+                provider_name="fake",
+                model_name="fake-model",
+                latency_ms=5.0,
+                prompt_tokens=100,
+                completion_tokens=40,
+                tokens_used=1140,
+            ),
+        ]
+    )
+    use_case = _use_case(provider, _config(), {"L2": _profile()})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.thinking_tokens == 1000
+    assert any("thinking_consumed_1000" in w for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_large_prompt_alone_does_not_look_like_thinking_exhaustion():
+    """The old guard compared a prompt+thinking+completion total against a cap on
+    completion alone, so any big prompt satisfied it automatically."""
+    provider = FakeProvider(
+        responses=[
+            ProviderResponse(
+                raw_text="a perfectly complete answer",
+                provider_name="fake",
+                model_name="fake-model",
+                latency_ms=5.0,
+                prompt_tokens=50_000,
+                completion_tokens=12,
+                tokens_used=50_012,
+                finish_reason="stop",
+            ),
+        ]
+    )
+    use_case = _use_case(provider, _config(), {"L2": _profile()})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert provider.call_count == 1
+    assert result.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_retry_lowers_reasoning_effort_for_cloud_backends():
+    """`think=False` is not on the OpenAI-compatible wire, so retrying with only
+    that set re-sent an identical request. The retry must move the knob the
+    backend actually reads."""
+    empty = ProviderResponse(
+        raw_text="",
+        provider_name="fake",
+        model_name="fake-model",
+        latency_ms=5.0,
+        completion_tokens=0,
+        tokens_used=4096,
+        finish_reason="length",
+    )
+    answered = ProviderResponse(
+        raw_text="actual answer",
+        provider_name="fake",
+        model_name="fake-model",
+        latency_ms=5.0,
+        completion_tokens=20,
+        tokens_used=120,
+    )
+    provider = ReasoningProvider(responses=[empty, answered])
+    profile = _profile()
+    profile = profile.model_copy(
+        update={"options": profile.options.model_copy(update={"reasoning_effort": "high"})}
+    )
+    use_case = _use_case(provider, _config(), {"L2": profile})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert provider.call_count == 2
+    assert result.content == "actual answer"
+
+
+@pytest.mark.asyncio
+async def test_no_retry_when_reasoning_effort_already_at_floor():
+    """"low" is as far down as Gemini's shim allows - "none" is a hard 400."""
+    provider = ReasoningProvider(
+        responses=[
+            ProviderResponse(
+                raw_text="",
+                provider_name="fake",
+                model_name="fake-model",
+                latency_ms=5.0,
+                completion_tokens=0,
+                tokens_used=4096,
+                finish_reason="length",
+            ),
+        ]
+    )
+    profile = _profile()
+    profile = profile.model_copy(
+        update={"options": profile.options.model_copy(update={"reasoning_effort": "low"})}
+    )
+    use_case = _use_case(provider, _config(), {"L2": profile})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert provider.call_count == 1
+    assert "empty_response_possible_thinking_exhaustion" in result.warnings

@@ -46,6 +46,10 @@ class OpenAICompatibleProvider:
     def model_name(self) -> str:
         return self._model
 
+    @property
+    def thinking_option(self) -> str | None:
+        return "reasoning_effort"
+
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         start = time.monotonic()
 
@@ -64,6 +68,12 @@ class OpenAICompatibleProvider:
 
         if options.stop:
             payload["stop"] = options.stop
+
+        # Caps internal reasoning so it cannot eat the whole max_tokens budget before
+        # the model writes a single visible character. Omitted entirely when unset -
+        # sending null is not the same as not sending the field.
+        if options.reasoning_effort:
+            payload["reasoning_effort"] = options.reasoning_effort
 
         # Not sent: real OpenAI supports "seed", but Gemini's OpenAI-compat shim
         # rejects it with a hard 400 ("Unknown name seed") - since "OpenAI-compatible"
@@ -134,6 +144,11 @@ class OpenAICompatibleProvider:
 
             usage = data.get("usage", {})
             tokens_used = usage.get("total_tokens")
+            # Reasoning models bill thinking inside total_tokens but omit it from both
+            # prompt_tokens and completion_tokens, so the three never add up. Keeping the
+            # parts lets the caller recover the thinking spend by subtraction.
+            prompt_tokens = usage.get("prompt_tokens")
+            completion_tokens = usage.get("completion_tokens")
         except (KeyError, IndexError, TypeError) as exc:
             raise InvalidResponseError(
                 f"{self._provider_name} response missing expected fields: {data}"
@@ -145,6 +160,8 @@ class OpenAICompatibleProvider:
             model_name=self._model,
             latency_ms=latency_ms,
             tokens_used=tokens_used,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             finish_reason=finish_reason,
             from_cache=False,
         )

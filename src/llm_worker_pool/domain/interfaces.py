@@ -27,6 +27,22 @@ class LLMProvider(Protocol):
     @property
     def model_name(self) -> str: ...
 
+    @property
+    def thinking_option(self) -> str | None:
+        """Which GenerationOptions field this backend actually honours to limit
+        internal reasoning: "think" (Ollama's boolean), "reasoning_effort" (the
+        OpenAI-compatible string), or None for backends with no such control.
+
+        The application layer needs this to decide whether retrying a
+        thinking-exhausted call can change anything. Assuming the wrong knob is
+        how the retry became a no-op for cloud providers: it re-sent `think=False`,
+        a field the OpenAI-compatible wire format does not carry, producing a
+        byte-identical request at full cost.
+
+        Optional - callers read it defensively and fall back to "think".
+        """
+        ...
+
     async def generate(
         self, prompt: str, options: GenerationOptions
     ) -> ProviderResponse: ...
