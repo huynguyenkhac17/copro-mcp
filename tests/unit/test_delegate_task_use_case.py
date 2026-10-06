@@ -528,3 +528,157 @@ async def test_provider_without_chain_never_falls_back():
     assert result.success is False
     assert result.error == "ollama down"
     assert groq.call_count == 0
+
+
+class RecordingProvider(NamedFakeProvider):
+    """Remembers the options of every call, to assert what each tier was sent."""
+
+    def __init__(self, name: str, **kwargs) -> None:
+        super().__init__(name, **kwargs)
+        self.seen_options: list[GenerationOptions] = []
+
+    async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
+        self.seen_options.append(options)
+        return await super().generate(prompt, options)
+
+
+def _l3_profile(timeout_seconds: float, effort: str | None = "medium") -> BudgetProfile:
+    return BudgetProfile(
+        name="L2",
+        description="test budget",
+        options=GenerationOptions(num_ctx=8192, reasoning_effort=effort),
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@pytest.mark.asyncio
+async def test_tier_timeout_cuts_a_hanging_primary_short():
+    """2026-10-06: flash-latest accepted the call and never answered; the fallback
+    must start after `tier_timeout_seconds`, not after the whole budget."""
+    gemini = NamedFakeProvider("gemini", sleep_seconds=5.0)
+    lite = NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=10.0),
+    )
+    use_case._config.tier_timeout_seconds = 0.05
+
+    started = asyncio.get_running_loop().time()
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+    elapsed = asyncio.get_running_loop().time() - started
+
+    assert result.success is True and result.provider == "gemini-lite"
+    assert elapsed < 2.0  # not the 10s budget, nor gemini's 5s hang
+    assert any("did not respond within 0.05s" in w for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_last_tier_keeps_the_full_budget_timeout():
+    gemini = NamedFakeProvider("gemini", responses=[ProviderUnavailableError("503")])
+    lite = NamedFakeProvider("gemini-lite", sleep_seconds=0.2, responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=5.0),
+    )
+    use_case._config.tier_timeout_seconds = 0.05  # would kill lite if it applied to the last tier
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True and result.provider == "gemini-lite"
+
+
+@pytest.mark.asyncio
+async def test_unavailable_later_tier_does_not_count_as_a_fallback():
+    """A chain entry skipped at startup is not a rescue, so the primary keeps the full budget."""
+    gemini = NamedFakeProvider("gemini", sleep_seconds=0.2, responses=[_ok("gemini")])
+    use_case = _chain_use_case(
+        {"gemini": gemini},
+        {"gemini": ["gemini-lite"]},  # gemini-lite not configured
+        profile=_l3_profile(timeout_seconds=5.0),
+    )
+    use_case._config.tier_timeout_seconds = 0.05
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True and result.provider == "gemini"
+
+
+@pytest.mark.asyncio
+async def test_fallback_tier_gets_lowered_reasoning_effort():
+    gemini = RecordingProvider("gemini", responses=[ProviderUnavailableError("503")])
+    lite = RecordingProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=5.0, effort="medium"),
+    )
+    use_case._config.fallback_reasoning_effort = "low"
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert gemini.seen_options[0].reasoning_effort == "medium"  # primary untouched
+    assert lite.seen_options[0].reasoning_effort == "low"
+
+
+@pytest.mark.asyncio
+async def test_fallback_never_raises_reasoning_effort_and_defaults_off():
+    gemini = RecordingProvider("gemini", responses=[ProviderUnavailableError("503")])
+    lite = RecordingProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=5.0, effort="medium"),
+    )
+    # feature off (None) -> budget value kept. Set explicitly: AppConfig() in tests also
+    # reads config/default.yaml, which turns the feature on.
+    use_case._config.fallback_reasoning_effort = None
+    await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+    assert lite.seen_options[0].reasoning_effort == "medium"
+
+    gemini2 = RecordingProvider("gemini", responses=[ProviderUnavailableError("503")])
+    lite2 = RecordingProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case2 = _chain_use_case(
+        {"gemini": gemini2, "gemini-lite": lite2},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=5.0, effort="low"),
+    )
+    use_case2._config.fallback_reasoning_effort = "low"
+    await use_case2.execute(DelegateTaskRequest(task="task", budget="L2"))
+    assert lite2.seen_options[0].reasoning_effort == "low"  # already low, unchanged
+
+
+class ExhaustedThenSlowProvider(RecordingProvider):
+    """First call: thinking used up the whole budget (empty answer); retry: hangs."""
+
+    async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
+        self.seen_options.append(options)
+        if len(self.seen_options) == 1:
+            return ProviderResponse(
+                raw_text="", provider_name=self.provider_name, model_name="m",
+                latency_ms=1.0, finish_reason="length",
+            )
+        await asyncio.sleep(5.0)
+        return _ok(self.provider_name)
+
+
+@pytest.mark.asyncio
+async def test_thinking_retry_on_a_non_last_tier_keeps_the_tier_cap():
+    """Review 2026-10-06: the thinking-exhaustion retry used the full budget timeout."""
+    gemini = ExhaustedThenSlowProvider("gemini")
+    lite = NamedFakeProvider("gemini-lite")
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=10.0, effort="medium"),
+    )
+    use_case._config.tier_timeout_seconds = 0.05
+
+    started = asyncio.get_running_loop().time()
+    await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+    elapsed = asyncio.get_running_loop().time() - started
+
+    assert len(gemini.seen_options) == 2  # the retry did happen
+    assert elapsed < 2.0  # and was cut at the tier cap, not the 10s budget

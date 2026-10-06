@@ -25,6 +25,7 @@ from llm_worker_pool.config.settings import AppConfig, load_budget_profiles
 from llm_worker_pool.domain.chunker import Chunker
 from llm_worker_pool.domain.exceptions import LocalAIGatewayError
 from llm_worker_pool.domain.file_context import FileContextResolver
+from llm_worker_pool.infra.url_fetcher import UrlContextFetcher
 from llm_worker_pool.domain.rag_indexer import RagIndexer
 from llm_worker_pool.infra.cache import InMemoryTTLCache
 from llm_worker_pool.infra.logging import InvocationLogger, configure_logging, get_logger
@@ -53,6 +54,16 @@ def _build_use_case(
         max_total_bytes=config.file_access.max_total_bytes,
     )
     
+    url_fetcher = None
+    if config.url_fetch.enabled:
+        url_fetcher = UrlContextFetcher(
+            max_bytes_per_url=config.url_fetch.max_bytes_per_url,
+            max_total_chars=config.url_fetch.max_total_chars,
+            timeout_seconds=config.url_fetch.timeout_seconds,
+            allow_private_hosts=config.url_fetch.allow_private_hosts,
+            repo_max_file_bytes=config.url_fetch.repo_max_file_bytes,
+        )
+
     rag_indexer = None
     if config.rag.enabled:
         chunker = Chunker()
@@ -71,6 +82,7 @@ def _build_use_case(
         invocation_logger=invocation_logger,
         file_context_resolver=file_context_resolver,
         rag_indexer=rag_indexer,
+        url_fetcher=url_fetcher,
     )
     
     return use_case, file_context_resolver
@@ -108,7 +120,9 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "hard reasoning. You (Claude) remain the supervisor: read the worker's output, "
             "verify it, and do the final reasoning yourself - never blindly trust the content. "
             "DO NOT read large files yourself first; pass their paths via `file_paths` so the "
-            "worker reads them server-side (does not consume your tokens). "
+            "worker reads them server-side (does not consume your tokens). Likewise pass web "
+            "pages or GitHub repos via `urls` (a github.com/<owner>/<repo>[/tree/<ref>/<dir>] "
+            "URL is shallow-cloned and its text files inlined) instead of fetching them yourself. "
             "\n\n"
             "ROUTING - which provider to use. The deciding factor is CONFIDENTIALITY, not "
             "merely whether data lives on local disk:\n"
@@ -155,6 +169,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
         budget: str = "L2",
         context: str | None = None,
         file_paths: list[str] | None = None,
+        urls: list[str] | None = None,
         output_format: str = "text",
         json_schema: dict[str, Any] | None = None,
         async_mode: bool = False,
@@ -167,6 +182,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                 budget=budget,
                 context=context,
                 file_paths=file_paths,
+                urls=urls,
                 output_format=output_format,  # type: ignore[arg-type]
                 json_schema=json_schema,
             )

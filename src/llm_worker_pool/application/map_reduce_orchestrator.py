@@ -23,7 +23,7 @@ class MapReduceOrchestrator:
         self._file_context_resolver = file_context_resolver
 
     async def execute(self, request: DelegateTaskRequest) -> DelegateTaskResult:
-        if not request.context and not request.file_paths:
+        if not request.context and not request.file_paths and not request.urls:
             # Nothing to map-reduce over, just call directly
             return await self._use_case.execute(request)
 
@@ -35,6 +35,8 @@ class MapReduceOrchestrator:
             context=request.context,
             file_paths=request.file_paths,
             query=request.task,
+            urls=request.urls,
+            url_fetcher=self._use_case.url_fetcher,
         )
 
         if not combined_context:

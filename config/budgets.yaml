@@ -82,9 +82,16 @@ budgets:
       top_p: 0.95
       top_k: 60
       repeat_penalty: 1.05
-      num_predict: 32768
+      # Lowered 32768 -> 16384. Tried 8192 on 2026-10-06 (theory: Google reserves
+      # capacity by the requested max_tokens and 503s large requests first) and
+      # REVERTED: gemini-flash-latest still went 0/6 at L3 (503 on a 93k-token prompt,
+      # and on an 18k-token prompt it accepted the call then never answered within the
+      # 300s timeout), while the flash-lite fallback - thinking at medium effort -
+      # spent 7.9k of the 8192 tokens thinking and returned truncated answers.
+      # Do not go below 16384 for L3 while it keeps reasoning_effort: medium.
+      num_predict: 16384
       num_ctx: 524288
       stop: []
       # L3 is the budget that exists for hard reasoning, so thinking is worth
-      # paying for here - but it now competes for a 32k ceiling, not a 4k one.
+      # paying for here - it competes for the num_predict ceiling above.
       reasoning_effort: medium

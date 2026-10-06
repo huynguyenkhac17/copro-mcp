@@ -125,3 +125,43 @@ async def test_directory_reads_all_allowed_files_non_recursively(tmp_path: Path)
     assert "content A" in result.text
     assert "content B" in result.text
     assert "content C cannot be read" not in result.text
+
+
+@pytest.mark.asyncio
+async def test_notebook_is_rendered_as_numbered_cells_without_outputs(tmp_path: Path):
+    import json
+
+    nb = tmp_path / "lab.ipynb"
+    nb.write_text(json.dumps({"cells": [
+        {"cell_type": "markdown", "source": ["# Title\n", "intro"]},
+        {"cell_type": "code", "source": "def f():\n    pass",
+         "outputs": [{"output_type": "stream", "text": "HUGE_OUTPUT"}]},
+    ]}), encoding="utf-8")
+
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    result = await resolver.aresolve([str(nb)], query="task")
+
+    assert "2 cells, numbered 0-1" in result.text
+    assert "=== cell 0 (markdown) ===\n# Title\nintro" in result.text
+    assert "=== cell 1 (code) ===\ndef f():\n    pass" in result.text
+    assert "HUGE_OUTPUT" not in result.text
+    assert '"cell_type"' not in result.text
+    assert result.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_malformed_notebook_falls_back_to_raw_text_with_warning(tmp_path: Path):
+    nb = tmp_path / "broken.ipynb"
+    nb.write_text("{not json", encoding="utf-8")
+
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    result = await resolver.aresolve([str(nb)], query="task")
+
+    assert "{not json" in result.text
+    assert result.warnings == [f"notebook_unparsed_sent_raw:{nb.resolve()}"]
+
+
+@pytest.mark.asyncio
+async def test_drive_root_normalization():
+    resolver = FileContextResolver(allowed_roots=[Path("D:")])
+    assert resolver._allowed_roots[0] == Path("D:/").resolve()

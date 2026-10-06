@@ -21,6 +21,7 @@ from llm_worker_pool.domain.prompt_builder import PromptBuilder
 from llm_worker_pool.domain.rag_indexer import RagIndexer
 from llm_worker_pool.infra.logging import InvocationLogger
 from llm_worker_pool.infra.retry import with_backoff
+from llm_worker_pool.infra.url_fetcher import UrlContextFetcher
 
 
 class DelegateTaskUseCase:
@@ -38,6 +39,7 @@ class DelegateTaskUseCase:
         output_parser: OutputParser | None = None,
         file_context_resolver: FileContextResolver | None = None,
         rag_indexer: RagIndexer | None = None,
+        url_fetcher: UrlContextFetcher | None = None,
     ) -> None:
         self._providers = providers
         self._default_provider = default_provider
@@ -50,6 +52,7 @@ class DelegateTaskUseCase:
             allowed_roots=[]
         )
         self._rag_indexer = rag_indexer
+        self._url_fetcher = url_fetcher
 
     async def execute(self, request: DelegateTaskRequest) -> DelegateTaskResult:
         profile = self.resolve_budget(request.budget)
@@ -68,6 +71,8 @@ class DelegateTaskUseCase:
             file_paths=request.file_paths,
             query=request.task,
             rag_indexer=self._rag_indexer,
+            urls=request.urls,
+            url_fetcher=self._url_fetcher,
         )
 
         built = self._prompt_builder.build(
@@ -91,23 +96,36 @@ class DelegateTaskUseCase:
         # Walk the fallback chain: a 503 "model overloaded" hits every key of a provider
         # alike, so retrying the same provider cannot help - only another model/vendor can.
         response: ProviderResponse | None = None
+        used_options = options  # what the answering tier was actually sent (see _tier_options)
+        used_timeout = timeout  # and the timeout it ran under (see _tier_timeout)
         failures: list[str] = []
-        for tier_name in self._fallback_chain(provider_name):
-            tier = self._providers.get(tier_name)
-            if tier is None:
-                continue  # fallback skipped at startup (e.g. its API keys are unset)
+        # Tiers skipped at startup (e.g. their API keys are unset) are dropped up front so
+        # "is there a later tier?" below only counts tiers that can actually answer.
+        tiers = [
+            self._providers[name]
+            for name in self._fallback_chain(provider_name)
+            if name in self._providers
+        ]
+        for index, tier in enumerate(tiers):
+            has_next = index < len(tiers) - 1
+            tier_timeout = self._tier_timeout(timeout, has_next)
+            tier_options = self._tier_options(options, is_fallback=index > 0)
             tier_start = time.monotonic()
             try:
-                response = await self._call_provider(tier, built.user_prompt, options, timeout)
+                response = await self._call_provider(
+                    tier, built.user_prompt, tier_options, tier_timeout
+                )
             except TimeoutError:
                 error = (
-                    f"{tier.provider_name} did not respond within {timeout}s "
+                    f"{tier.provider_name} did not respond within {tier_timeout}s "
                     f"(budget={request.budget}). Try a lower budget or truncate the context."
                 )
             except LocalAIGatewayError as exc:
                 error = str(exc)
             else:
                 provider = tier
+                used_options = tier_options
+                used_timeout = tier_timeout
                 break
 
             self._logger.log_failure(
@@ -134,8 +152,8 @@ class DelegateTaskUseCase:
 
         retried_without_thinking = False
         thinking_knob = getattr(provider, "thinking_option", "think")
-        if self._looks_thinking_exhausted(response, options) and self._can_curb_thinking(
-            options, thinking_knob
+        if self._looks_thinking_exhausted(response, used_options) and self._can_curb_thinking(
+            used_options, thinking_knob
         ):
             # Thinking-capable models can burn the entire num_predict budget on internal
             # reasoning, leaving nothing for the actual answer. Rather than surface a
@@ -146,12 +164,14 @@ class DelegateTaskUseCase:
             # `reasoning_effort` is the OpenAI-compatible field. Setting only `think` here
             # is what made this retry a silent no-op for cloud providers - it re-sent a
             # byte-identical payload and burned a second full call for nothing.
-            fallback_options = options.model_copy(
+            fallback_options = used_options.model_copy(
                 update={"think": False, "reasoning_effort": "low"}
             )
             try:
+                # Same cap as the tier's first call: a non-last tier must not be able to
+                # hold the request past `tier_timeout_seconds` through this retry either.
                 response = await self._call_provider(
-                    provider, built.user_prompt, fallback_options, timeout
+                    provider, built.user_prompt, fallback_options, used_timeout
                 )
                 retried_without_thinking = True
             except (TimeoutError, LocalAIGatewayError):
@@ -166,7 +186,7 @@ class DelegateTaskUseCase:
 
         if retried_without_thinking:
             warnings.append("retried_with_thinking_disabled_after_empty_response")
-        elif self._looks_thinking_exhausted(response, options):
+        elif self._looks_thinking_exhausted(response, used_options):
             warnings.append("empty_response_possible_thinking_exhaustion")
 
         # The provider reported this answer as cut off mid-sentence. Without this the
@@ -227,6 +247,10 @@ class DelegateTaskUseCase:
             error=None,
         )
 
+    @property
+    def url_fetcher(self) -> UrlContextFetcher | None:
+        return self._url_fetcher
+
     def available_budgets(self) -> list[str]:
         return list(self._budget_profiles)
 
@@ -241,6 +265,25 @@ class DelegateTaskUseCase:
                 f"Budget '{budget}' does not exist. Available budgets: {available}"
             )
         return profile
+
+    def _tier_timeout(self, timeout: float, has_next: bool) -> float:
+        """A tier that still has a fallback behind it is cut off at `tier_timeout_seconds`,
+        so a model that accepts the call and then hangs cannot eat the whole budget; the
+        last tier keeps the full budget timeout."""
+        cap = self._config.tier_timeout_seconds
+        if has_next and cap is not None:
+            return min(timeout, cap)
+        return timeout
+
+    _HEAVY_REASONING = frozenset({"medium", "high"})
+
+    def _tier_options(self, options: GenerationOptions, *, is_fallback: bool) -> GenerationOptions:
+        """Curb reasoning on fallback tiers (see `AppConfig.fallback_reasoning_effort`).
+        Never raises effort: a budget already at "low" stays as it is."""
+        effort = self._config.fallback_reasoning_effort
+        if is_fallback and effort and options.reasoning_effort in self._HEAVY_REASONING:
+            return options.model_copy(update={"reasoning_effort": effort})
+        return options
 
     def _fallback_chain(self, provider_name: str) -> list[str]:
         chain = [provider_name]

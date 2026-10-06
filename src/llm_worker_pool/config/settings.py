@@ -55,6 +55,9 @@ class ProviderInstanceConfig(BaseModel):
     concurrency: int | None = None
     """Max parallel generate() calls for this provider instance. None = use
     the type-based default (see providers/registry.py)."""
+    per_key_concurrency: int | None = None
+    """Max parallel generate() calls per API key. If set, overrides
+    provider-level concurrency wrapping."""
 
 
 class RetryConfig(BaseModel):
@@ -76,6 +79,20 @@ class FileAccessConfig(BaseModel):
     allowed_roots: list[str] = Field(default_factory=list)
     max_file_bytes: int = 200_000
     max_total_bytes: int = 800_000
+
+
+class UrlFetchConfig(BaseModel):
+    """Lets delegate_task fetch `urls` (web pages, GitHub repos) server-side."""
+
+    enabled: bool = True
+    max_bytes_per_url: int = 1_000_000
+    """Raw download cap per page - HTML shrinks a lot once reduced to text."""
+    max_total_chars: int = 800_000
+    """Cap on all fetched text combined, across every URL in one request."""
+    timeout_seconds: float = 30.0
+    allow_private_hosts: bool = False
+    """Off = refuse localhost / private-network addresses (SSRF guard)."""
+    repo_max_file_bytes: int = 100_000
 
 
 class CacheConfig(BaseModel):
@@ -100,6 +117,12 @@ class RagConfig(BaseModel):
     top_k: int = 10
 
 
+class CircuitBreakerConfig(BaseModel):
+    enabled: bool = True
+    failure_threshold: int = 3
+    quarantine_seconds: float = 60.0
+
+
 class AppConfig(BaseSettings):
     """Root configuration. Priority sources (high -> low):
     init kwargs > real environment variables (LLM_WORKER_POOL_..., nested with
@@ -121,13 +144,26 @@ class AppConfig(BaseSettings):
     retries (e.g. {"gemini": ["gemini-lite", "groq"]}). A provider with no entry never
     falls back - that is what keeps a request sent to local ollama for confidentiality
     from silently leaking to a cloud API."""
+    tier_timeout_seconds: float | None = None
+    """Cap on how long a tier may run while a later fallback tier is still available.
+    The last available tier always gets the budget's full timeout. Exists because a
+    saturated model can accept the call and then never answer: measured 2026-10-06,
+    gemini-flash-latest held L3 calls for the whole 300s before flash-lite even started.
+    None = no cap (every tier gets the full budget timeout)."""
+    fallback_reasoning_effort: str | None = None
+    """reasoning_effort used once the chain has moved past the requested provider, when
+    the budget asks for more ("medium"/"high"). A weaker fallback model thinking at
+    medium effort can burn the whole num_predict on reasoning and return a truncated
+    answer (flash-lite at L3, 2026-10-06). None = keep the budget's value."""
     timeout_seconds: float = 60.0
     retry: RetryConfig = Field(default_factory=RetryConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     file_access: FileAccessConfig = Field(default_factory=FileAccessConfig)
+    url_fetch: UrlFetchConfig = Field(default_factory=UrlFetchConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     jobs: JobsConfig = Field(default_factory=JobsConfig)
     rag: RagConfig = Field(default_factory=RagConfig)
+    circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
 
     @classmethod
     def settings_customise_sources(

@@ -15,7 +15,8 @@ def test_build_without_context_uses_task_as_prompt():
     built = builder.build(task="lam gi do", context=None, profile=_profile())
 
     assert built.user_prompt == "lam gi do"
-    assert built.system_prompt == "Ban la trợ lý."
+    assert built.system_prompt.startswith("Ban la trợ lý.")
+    assert "Never invent facts" in built.system_prompt
     assert built.warnings == []
 
 

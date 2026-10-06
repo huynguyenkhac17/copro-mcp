@@ -11,6 +11,7 @@ skip that path and return a clear warning, similar to PromptBuilder/OutputParser
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,14 @@ class ResolvedFileContext(BaseModel):
     warnings: list[str] = []
 
 
+def _normalize_root(root: Path | str) -> Path:
+    p = Path(root)
+    s = str(p)
+    if len(s) == 2 and s[1] == ":":
+        return Path(f"{s}/").resolve()
+    return p.resolve()
+
+
 class FileContextResolver:
     def __init__(
         self,
@@ -29,7 +38,7 @@ class FileContextResolver:
         max_file_bytes: int = 200_000,
         max_total_bytes: int = 800_000,
     ) -> None:
-        self._allowed_roots = allowed_roots
+        self._allowed_roots = [_normalize_root(r) for r in allowed_roots]
         self._max_file_bytes = max_file_bytes
         self._max_total_bytes = max_total_bytes
 
@@ -97,6 +106,12 @@ class FileContextResolver:
                 continue
 
             total_bytes += size
+            if resolved.suffix.lower() == ".ipynb":
+                rendered = render_notebook(content)
+                if rendered is None:
+                    warnings.append(f"notebook_unparsed_sent_raw:{raw}")
+                else:
+                    content = rendered
             texts_by_file[raw] = content
 
         if not texts_by_file:
@@ -132,6 +147,35 @@ class FileContextResolver:
         )
 
 
+def render_notebook(raw_json: str) -> str | None:
+    """Render a Jupyter notebook as explicitly numbered cells, or None if unparseable.
+
+    Sent as raw JSON, a worker has to count elements of the "cells" array itself -
+    and models do that badly: on a 47-cell lab notebook one answered with indices
+    up to 50 and silently pointed edits at the wrong cells. Stating each index
+    outright removes the counting. Outputs are dropped: they are noise for the
+    worker and can be huge (base64 plots).
+    """
+    try:
+        cells = json.loads(raw_json)["cells"]
+        parts = [
+            f"=== cell {i} ({cell['cell_type']}) ===\n{_cell_source(cell)}"
+            for i, cell in enumerate(cells)
+        ]
+    except (ValueError, KeyError, TypeError):
+        return None
+    header = (
+        f"[Jupyter notebook: {len(cells)} cells, numbered 0-{len(cells) - 1} in file "
+        "order; cell outputs omitted]"
+    )
+    return "\n\n".join([header, *parts])
+
+
+def _cell_source(cell: dict[str, Any]) -> str:
+    source = cell.get("source", "")
+    return "".join(source) if isinstance(source, list) else str(source)
+
+
 async def resolve_request_context(
     resolver: FileContextResolver,
     *,
@@ -139,13 +183,27 @@ async def resolve_request_context(
     file_paths: list[str] | None,
     query: str,
     rag_indexer: Any | None = None,
+    urls: list[str] | None = None,
+    url_fetcher: Any | None = None,
 ) -> tuple[str | None, list[str]]:
     """Shared by DelegateTaskUseCase and MapReduceOrchestrator so both build the
-    combined (context + file_paths) text the exact same way."""
+    combined (context + file_paths + urls) text the exact same way."""
 
-    if not file_paths:
+    if not file_paths and not urls:
         return context, []
 
-    file_result = await resolver.aresolve(file_paths, query=query, rag_indexer=rag_indexer)
-    combined = "\n\n".join(part for part in (context, file_result.text) if part)
-    return combined, file_result.warnings
+    parts: list[str | None] = [context]
+    warnings: list[str] = []
+    if file_paths:
+        file_result = await resolver.aresolve(file_paths, query=query, rag_indexer=rag_indexer)
+        parts.append(file_result.text)
+        warnings.extend(file_result.warnings)
+    if urls:
+        if url_fetcher is None:
+            warnings.append("url_fetch_disabled: enable url_fetch in config to use `urls`")
+        else:
+            fetched = await url_fetcher.fetch(urls)
+            parts.append(fetched.text)
+            warnings.extend(fetched.warnings)
+    combined = "\n\n".join(part for part in parts if part)
+    return combined or None, warnings

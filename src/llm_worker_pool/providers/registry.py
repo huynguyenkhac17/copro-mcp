@@ -19,6 +19,7 @@ from llm_worker_pool.domain.exceptions import ConfigurationError
 from llm_worker_pool.domain.interfaces import LLMProvider
 from llm_worker_pool.domain.models import ProviderResponse
 from llm_worker_pool.infra.cache import InMemoryTTLCache
+from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
 from llm_worker_pool.infra.logging import get_logger
 from llm_worker_pool.providers.caching_provider import CachingProvider
 from llm_worker_pool.providers.concurrency_provider import ConcurrencyProvider
@@ -33,15 +34,20 @@ _logger = get_logger(__name__)
 _DEFAULT_CONCURRENCY_BY_TYPE: dict[str, int] = {"ollama": 1}
 _DEFAULT_CONCURRENCY_FALLBACK = 5
 
-ProviderBuilder = Callable[[str, ProviderInstanceConfig], LLMProvider]
+ProviderBuilder = Callable[..., LLMProvider]
 
-def build_ollama(name: str, config: ProviderInstanceConfig) -> LLMProvider:
+def build_ollama(name: str, config: ProviderInstanceConfig, **kwargs) -> LLMProvider:
     return OllamaProvider(
         endpoint=config.endpoint,
         model=config.model,
     )
 
-def build_openai_compatible(name: str, config: ProviderInstanceConfig) -> LLMProvider:
+def build_openai_compatible(
+    name: str,
+    config: ProviderInstanceConfig,
+    circuit_breaker: KeyCircuitBreaker | None = None,
+    **kwargs,
+) -> LLMProvider:
     env_vars = [*(config.api_key_envs or []), *([config.api_key_env] if config.api_key_env else [])]
 
     api_keys: list[str] = []
@@ -62,6 +68,8 @@ def build_openai_compatible(name: str, config: ProviderInstanceConfig) -> LLMPro
         endpoint=config.endpoint,
         model=config.model,
         api_keys=api_keys,
+        circuit_breaker=circuit_breaker,
+        per_key_concurrency=config.per_key_concurrency,
     )
 
 _REGISTRY: dict[str, ProviderBuilder] = {
@@ -77,6 +85,11 @@ def register_provider(type_name: str, builder: ProviderBuilder) -> None:
 class ProviderFactory:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
+        self._circuit_breaker = KeyCircuitBreaker(
+            failure_threshold=config.circuit_breaker.failure_threshold,
+            quarantine_seconds=config.circuit_breaker.quarantine_seconds,
+            enabled=config.circuit_breaker.enabled,
+        )
 
     def create_all(self) -> dict[str, LLMProvider]:
         providers: dict[str, LLMProvider] = {}
@@ -90,19 +103,33 @@ class ProviderFactory:
                 )
 
             try:
-                provider = builder(name, instance_config)
+                provider = builder(
+                    name,
+                    instance_config,
+                    circuit_breaker=self._circuit_breaker,
+                )
+            except TypeError:
+                try:
+                    provider = builder(name, instance_config)
+                except ConfigurationError as exc:
+                    _logger.warning("Skipping provider '%s': %s", name, exc)
+                    continue
             except ConfigurationError as exc:
                 # A provider missing its credentials (e.g. unset api_key_env) should not
                 # take down the whole server - skip it, other providers stay usable.
                 _logger.warning("Skipping provider '%s': %s", name, exc)
                 continue
 
-            max_parallel = instance_config.concurrency
-            if max_parallel is None:
-                max_parallel = _DEFAULT_CONCURRENCY_BY_TYPE.get(
-                    instance_config.type, _DEFAULT_CONCURRENCY_FALLBACK
-                )
-            provider = ConcurrencyProvider(provider, max_parallel)
+            if instance_config.per_key_concurrency is not None:
+                # Per-key concurrency is handled directly by the provider instance
+                pass
+            else:
+                max_parallel = instance_config.concurrency
+                if max_parallel is None:
+                    max_parallel = _DEFAULT_CONCURRENCY_BY_TYPE.get(
+                        instance_config.type, _DEFAULT_CONCURRENCY_FALLBACK
+                    )
+                provider = ConcurrencyProvider(provider, max_parallel)
 
             if self._config.cache.enabled:
                 cache: InMemoryTTLCache[ProviderResponse] = InMemoryTTLCache(

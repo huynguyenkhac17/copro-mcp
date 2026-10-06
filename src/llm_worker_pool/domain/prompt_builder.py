@@ -17,6 +17,21 @@ _JSON_INSTRUCTION = (
     "\n\nYou MUST respond with exactly one valid JSON, without any explanations, "
     "and do not wrap it in markdown code fences."
 )
+# Appended to every system prompt. Each rule answers a failure seen in real use:
+# asked to fill in a lab notebook, a worker returned only a fragment of a cell as
+# its "full new content" (replacing it would have deleted the rest of the cell),
+# made up a classmate's results for a pair-work section, and answered a section
+# marked "do this without AI".
+_GROUNDING_RULES = (
+    "\n\nGround rules:"
+    "\n- Never invent facts you cannot observe from the input: other people's "
+    "results, actions the user took, measurements you did not compute. Leave such "
+    "fields unfilled and say they need the user."
+    "\n- Respect restrictions written in the input itself (e.g. a section marked "
+    "NO_AI or 'do by hand'): skip it and say so instead of answering it."
+    "\n- When asked for the full/new content of something, return all of it, not "
+    "an excerpt - keep every unchanged part verbatim."
+)
 _JSON_SCHEMA_INSTRUCTION_TMPL = (
     "\n\nThe returned JSON must follow this schema:\n{schema}"
 )
@@ -39,7 +54,7 @@ class PromptBuilder:
     ) -> BuiltPrompt:
         warnings: list[str] = []
 
-        system_prompt = profile.options.system_prompt
+        system_prompt = (profile.options.system_prompt or "").rstrip() + _GROUNDING_RULES
         if output_format == "json":
             extra = _JSON_INSTRUCTION
             if json_schema is not None:

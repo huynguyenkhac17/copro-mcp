@@ -41,7 +41,7 @@ providers:
       - GEMINI_API_KEY_4
       - GEMINI_API_KEY_5
       - GEMINI_API_KEY_6
-    # concurrency: 10  # omit to use the type-based default (non-ollama -> 5)
+    per_key_concurrency: 2  # 2 concurrent requests per API key (6 keys * 2 = 12 total capacity)
 
   # First fallback tier for gemini, mirroring Deeplearn's flash -> flash-lite cascade:
   # a 503 "model overloaded" is per-MODEL, so the lite model on the very same keys
@@ -57,6 +57,7 @@ providers:
       - GEMINI_API_KEY_4
       - GEMINI_API_KEY_5
       - GEMINI_API_KEY_6
+    per_key_concurrency: 2
 
   # Groq speaks the OpenAI protocol, so it reuses the openai_compatible adapter -
   # no new code. Its value here is not quality but INFRASTRUCTURE INDEPENDENCE:
@@ -87,13 +88,25 @@ fallbacks:
   gemini: [gemini-lite, groq]
   gemini-lite: [groq]
 
+# Cap (seconds) on a tier that still has a fallback behind it; the last tier keeps
+# the budget's full timeout. On 2026-10-06 gemini-flash-latest accepted L3 calls and
+# then never answered, so every review waited the full 300s before flash-lite ran.
+# Note: gemini-lite is not the last tier (groq is), so it is capped too - fine, it
+# answered in 9-23s that day; groq's free tier rejects L3-sized prompts (8k TPM).
+tier_timeout_seconds: 90
+
+# reasoning_effort once the chain has fallen back past the requested provider, when
+# the budget asks for medium/high. flash-lite at L3 medium spent 7.9k of an 8k
+# num_predict thinking and returned truncated answers.
+fallback_reasoning_effort: low
+
 # Default timeout (seconds) if the budget does not explicitly define one.
 timeout_seconds: 60
 
 retry:
   # Kept low on purpose: an overloaded model rarely recovers within seconds, so the
   # fallback chain (see `fallbacks`) is a faster rescue than hammering the same one.
-  max_attempts: 2
+  max_attempts: 4
   backoff_base_seconds: 0.5
 
 logging:
@@ -105,9 +118,21 @@ file_access:
   # List of allowed root directories that can be read via the file_paths parameter of delegate_task.
   # Empty = feature DISABLED (secure default). Example to enable for a project:
   #   allowed_roots: ["D:/project/mcp"]
-  allowed_roots: ["D:/project"]
+  allowed_roots: ["D:/"]
   max_file_bytes: 200000
   max_total_bytes: 800000
+
+url_fetch:
+  # Lets delegate_task fetch `urls` server-side: web pages are reduced to text,
+  # github.com/<owner>/<repo>[/tree/<ref>/<dir>] is shallow-cloned and inlined.
+  enabled: true
+  max_bytes_per_url: 1000000
+  max_total_chars: 800000
+  timeout_seconds: 30
+  # Keep false: refuses localhost / private-network targets (SSRF guard), since
+  # URLs come from prompts.
+  allow_private_hosts: false
+  repo_max_file_bytes: 100000
 
 cache:
   # Caches provider responses by (final prompt + options), avoiding repeated
@@ -126,3 +151,9 @@ rag:
   chunk_size_tokens: 256
   overlap_tokens: 32
   top_k: 10
+
+circuit_breaker:
+  # Auto-quarantine keys after repeated 429/403/503 errors to protect pool stability
+  enabled: true
+  failure_threshold: 3
+  quarantine_seconds: 60.0

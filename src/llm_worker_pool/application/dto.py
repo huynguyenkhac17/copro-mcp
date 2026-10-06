@@ -23,6 +23,9 @@ class DelegateTaskRequest(BaseModel):
     """File paths for the server to read directly (instead of pasting content into
     'context'), saving tokens on Claude's side. Requires configuration of
     file_access.allowed_roots to work - see domain/file_context.py."""
+    urls: list[str] | None = None
+    """Web pages or GitHub repos for the server to fetch and inline into the context
+    (see infra/url_fetcher.py)."""
     output_format: OutputFormat = "text"
     json_schema: dict[str, Any] | None = None
 
