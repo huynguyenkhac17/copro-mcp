@@ -17,6 +17,12 @@ class ProviderUnavailableError(LocalAIGatewayError):
     """Cannot connect to the provider (e.g. Ollama is not running)."""
 
 
+class RequestTooLargeError(LocalAIGatewayError):
+    """The prompt exceeds what this provider accepts per request (e.g. Groq free tier:
+    8K tokens/minute per key -> HTTP 413). Not retryable: the same prompt will be refused
+    again, so the fallback chain should move on immediately."""
+
+
 class ProviderTimeoutError(LocalAIGatewayError):
     """Provider did not respond within the allowed time."""
 

@@ -58,6 +58,11 @@ class ProviderInstanceConfig(BaseModel):
     per_key_concurrency: int | None = None
     """Max parallel generate() calls per API key. If set, overrides
     provider-level concurrency wrapping."""
+    max_prompt_tokens: int | None = None
+    """Skip this provider without calling it when the estimated prompt is larger. For
+    vendors with a small per-request ceiling: Groq's free tier allows 8K tokens/minute
+    per key and answers a bigger request with 413 (measured 2026-10-07: an 11K-token L3
+    prompt was refused, a 3.5K-token L2 prompt passed). None = no limit."""
 
 
 class RetryConfig(BaseModel):
@@ -139,6 +144,15 @@ class AppConfig(BaseSettings):
 
     providers: dict[str, ProviderInstanceConfig] = Field(default_factory=dict)
     default_provider: str = "ollama"
+    budget_providers: dict[str, str] = Field(default_factory=dict)
+    """Default provider per budget when the request names none (e.g. {"L1": "groq"}).
+    A budget without an entry - or whose provider failed to start - uses
+    default_provider. An explicit `provider` in the request always wins, so routing a
+    confidential task to ollama is never overridden."""
+    budget_fallbacks: dict[str, list[str]] = Field(default_factory=dict)
+    """Fallback chain for a budget's own provider, replacing `fallbacks[provider]` for
+    requests routed by budget_providers (e.g. L3: groq -> [gemini, gemini-lite] while
+    L2 keeps groq -> [gemini-lite, gemini]). Ignored when the request names a provider."""
     fallbacks: dict[str, list[str]] = Field(default_factory=dict)
     """Per-provider fallback chain, tried in order when the provider fails even after
     retries (e.g. {"gemini": ["gemini-lite", "groq"]}). A provider with no entry never

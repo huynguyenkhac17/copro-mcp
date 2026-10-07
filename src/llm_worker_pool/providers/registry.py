@@ -70,6 +70,7 @@ def build_openai_compatible(
         api_keys=api_keys,
         circuit_breaker=circuit_breaker,
         per_key_concurrency=config.per_key_concurrency,
+        max_prompt_tokens=config.max_prompt_tokens,
     )
 
 _REGISTRY: dict[str, ProviderBuilder] = {
@@ -85,10 +86,17 @@ def register_provider(type_name: str, builder: ProviderBuilder) -> None:
 class ProviderFactory:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
-        self._circuit_breaker = KeyCircuitBreaker(
-            failure_threshold=config.circuit_breaker.failure_threshold,
-            quarantine_seconds=config.circuit_breaker.quarantine_seconds,
-            enabled=config.circuit_breaker.enabled,
+
+    def _new_circuit_breaker(self) -> KeyCircuitBreaker:
+        # One breaker PER PROVIDER, not one shared by the pool. gemini and gemini-lite
+        # use the same API keys, but 503 "model overloaded" and free-tier 429 quotas are
+        # per model: with a shared breaker, flash failing 3x on a key quarantined that
+        # key for flash-lite too - exactly when the chain needed lite to take over.
+        cb = self._config.circuit_breaker
+        return KeyCircuitBreaker(
+            failure_threshold=cb.failure_threshold,
+            quarantine_seconds=cb.quarantine_seconds,
+            enabled=cb.enabled,
         )
 
     def create_all(self) -> dict[str, LLMProvider]:
@@ -106,7 +114,7 @@ class ProviderFactory:
                 provider = builder(
                     name,
                     instance_config,
-                    circuit_breaker=self._circuit_breaker,
+                    circuit_breaker=self._new_circuit_breaker(),
                 )
             except TypeError:
                 try:

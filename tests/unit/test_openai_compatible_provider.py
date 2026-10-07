@@ -146,3 +146,53 @@ async def test_per_key_concurrency_parallel_execution():
     r1, r2 = await asyncio.gather(t1, t2)
     assert r1.raw_text == "hi"
     assert r2.raw_text == "hi"
+
+
+@pytest.mark.asyncio
+async def test_prompt_over_max_prompt_tokens_is_refused_before_any_request():
+    from llm_worker_pool.domain.exceptions import RequestTooLargeError
+    from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
+
+    calls: list[httpx.Request] = []
+    cb = KeyCircuitBreaker(failure_threshold=1)
+    provider = OpenAICompatibleProvider(
+        provider_name="groq",
+        endpoint="https://example.invalid/v1",
+        model="m",
+        api_keys=["key-a"],
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda r: calls.append(r) or _ok_response(r))),
+        circuit_breaker=cb,
+        max_prompt_tokens=100,
+    )
+
+    with pytest.raises(RequestTooLargeError):
+        await provider.generate("x" * 4000, GenerationOptions())  # ~1000 tokens
+
+    assert calls == []
+    assert cb.is_available("key-a")  # a local refusal must not quarantine the key
+
+    await provider.generate("short prompt", GenerationOptions())
+    assert len(calls) == 1
+
+
+def test_each_provider_gets_its_own_circuit_breaker(monkeypatch):
+    from llm_worker_pool.config.settings import AppConfig, ProviderInstanceConfig
+    from llm_worker_pool.providers.registry import ProviderFactory
+
+    monkeypatch.setenv("SHARED_TEST_KEY", "k")
+    cfg = AppConfig()
+    cfg.cache.enabled = False
+    spec = dict(type="openai_compatible", endpoint="https://example.invalid/v1",
+                api_key_envs=["SHARED_TEST_KEY"], per_key_concurrency=1)
+    cfg.providers = {"flash": ProviderInstanceConfig(model="flash", **spec),
+                     "lite": ProviderInstanceConfig(model="lite", **spec)}
+
+    providers = ProviderFactory(cfg).create_all()
+    flash_cb, lite_cb = providers["flash"].circuit_breaker, providers["lite"].circuit_breaker
+
+    for _ in range(cfg.circuit_breaker.failure_threshold):
+        flash_cb.record_failure("k", 503)
+
+    assert not flash_cb.is_available("k")
+    assert lite_cb.is_available("k")  # flash overload must not lock the key for lite

@@ -106,6 +106,9 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
     )
     job_manager = JobManager(jobs_cache)
     
+    budget_routing = ", ".join(
+        f"{b}->{p}" for b, p in sorted(config.budget_providers.items())
+    ) or "none"
     budget_names = ", ".join(sorted(use_case.available_budgets()))
     provider_names = ", ".join(sorted(use_case.available_providers()))
 
@@ -132,7 +135,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "cloud quota. It runs locally, so nothing is sent to a cloud API - but it is weaker "
             "and serial by default.\n"
             "- EVERY OTHER task -> use an external/cloud provider (leave `provider` unset for "
-            f"the default: {config.default_provider}). This INCLUDES summarizing/explaining "
+            f"cloud routing: per budget {budget_routing}, else {config.default_provider}). This INCLUDES summarizing/explaining "
             "ordinary local project code: `file_paths` reads the files server-side and streams "
             "them to whichever provider you pick, so cloud works fine for local code too. Prefer "
             "cloud here - it has real concurrency (multiple parallel workers, multi-key "
@@ -153,7 +156,8 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "semantic classification, first-pass bug-candidate scans, log analysis, boilerplate "
             "generation, format conversion, multi-step extraction - SHOULD be delegated. "
             "\n\n"
-            f"Available providers: {provider_names} (default: {config.default_provider}). "
+            f"Available providers: {provider_names} (default: {config.default_provider}; "
+            f"per budget when `provider` is unset: {budget_routing}). "
             f"Available budgets: {budget_names} - pick the smallest one that plausibly fits the task. "
             "Set output_format='json' (optionally with json_schema) if you need structured data back. "
             "A 'cached' field in the result indicates if the response was served from cache. "

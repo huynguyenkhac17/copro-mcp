@@ -79,21 +79,46 @@ providers:
       - GROQ_API_KEY_2
       - GROQ_API_KEY_3
       - GROQ_API_KEY_4
+    # Free tier: 30 RPM, 1K RPD, 8K TPM, 200K TPD per key (response headers + docs,
+    # 2026-10-07). A request whose prompt alone exceeds 8K tokens is refused with 413,
+    # so larger prompts skip Groq locally and go straight to the next tier. 6000 leaves
+    # headroom: the chars/4 estimate undercounts code and Vietnamese text.
+    max_prompt_tokens: 6000
 
 # Fallback chains, tried in order when a provider still fails after retries
 # (503 overload, 429 quota, timeout, bad key...). The last tier is a different
 # vendor, so even a Google-wide outage is survivable. ollama deliberately has no
 # chain: a request routed there for confidentiality must never reach the cloud.
+# Default provider per budget when the request names none. Groq leads L1/L2: in the
+# 2026-10-07 benchmark gpt-oss-120b answered L2 in ~1s with full accuracy and never
+# returned 503, while gemini-flash-latest took ~20-35s and 503'd on a third of calls.
+# Prompts over groq's max_prompt_tokens fall through to the gemini tiers.
+budget_providers:
+  L1: groq
+  L2: groq
+  # L3 too: on the 2026-10-07 seeded-bug review test gpt-oss-120b found 4/4 bugs on
+  # every run in ~2.5s; most L3 prompts exceed max_prompt_tokens and skip it locally.
+  L3: groq
+
+# Chain for a budget's own provider (overrides `fallbacks` for budget-routed requests).
+# L3 tries flash before lite: flash found 4/4 seeded bugs vs lite's 3/4, and the
+# tier cap below bounds how long an overloaded flash can stall the request.
+budget_fallbacks:
+  L3: [gemini, gemini-lite]
+
 fallbacks:
   gemini: [gemini-lite, groq]
   gemini-lite: [groq]
+  groq: [gemini-lite, gemini]
 
 # Cap (seconds) on a tier that still has a fallback behind it; the last tier keeps
 # the budget's full timeout. On 2026-10-06 gemini-flash-latest accepted L3 calls and
 # then never answered, so every review waited the full 300s before flash-lite ran.
 # Note: gemini-lite is not the last tier (groq is), so it is capped too - fine, it
 # answered in 9-23s that day; groq's free tier rejects L3-sized prompts (8k TPM).
-tier_timeout_seconds: 90
+# 90 -> 40 on 2026-10-07: every flash call that did answer took 6-27s, so waiting
+# longer only delays lite; with 90 the L3 p50 sat at ~93s (6 concurrent calls).
+tier_timeout_seconds: 40
 
 # reasoning_effort once the chain has fallen back past the requested provider, when
 # the budget asks for medium/high. flash-lite at L3 medium spent 7.9k of an 8k

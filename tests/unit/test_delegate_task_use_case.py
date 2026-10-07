@@ -73,10 +73,16 @@ def _profile(timeout_seconds: float | None = None) -> BudgetProfile:
 
 
 def _config(max_attempts: int = 1) -> AppConfig:
-    return AppConfig(
+    config = AppConfig(
         retry=RetryConfig(max_attempts=max_attempts, backoff_base_seconds=0.01),
         timeout_seconds=5.0,
     )
+    # AppConfig() also reads config/default.yaml, and pydantic-settings deep-merges
+    # dicts (passing budget_providers={} above would keep the yaml entries). Reset
+    # after construction so tests never depend on the real per-budget routing.
+    config.budget_providers = {}
+    config.budget_fallbacks = {}
+    return config
 
 
 def _use_case(
@@ -682,3 +688,83 @@ async def test_thinking_retry_on_a_non_last_tier_keeps_the_tier_cap():
 
     assert len(gemini.seen_options) == 2  # the retry did happen
     assert elapsed < 2.0  # and was cut at the tier cap, not the 10s budget
+
+
+def _budget_use_case(providers, budget_providers, fallbacks=None, default_provider="gemini"):
+    use_case = _chain_use_case(providers, fallbacks or {}, default_provider=default_provider)
+    use_case._config.budget_providers = budget_providers
+    return use_case
+
+
+@pytest.mark.asyncio
+async def test_budget_without_explicit_provider_uses_budget_default():
+    gemini = NamedFakeProvider("gemini")
+    groq = NamedFakeProvider("groq", responses=[_ok("groq")])
+    use_case = _budget_use_case({"gemini": gemini, "groq": groq}, {"L2": "groq"})
+
+    result = await use_case.execute(DelegateTaskRequest(task="t", budget="L2"))
+
+    assert result.provider == "groq"
+    assert gemini.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_explicit_provider_overrides_budget_default():
+    ollama = NamedFakeProvider("ollama", responses=[_ok("ollama")])
+    groq = NamedFakeProvider("groq")
+    use_case = _budget_use_case({"ollama": ollama, "groq": groq}, {"L2": "groq"})
+
+    result = await use_case.execute(DelegateTaskRequest(task="secret", budget="L2", provider="ollama"))
+
+    assert result.provider == "ollama"
+    assert groq.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_budget_default_that_failed_to_start_degrades_to_global_default():
+    gemini = NamedFakeProvider("gemini", responses=[_ok("gemini")])
+    # "groq" is configured for L2 but absent (e.g. its keys are unset)
+    use_case = _budget_use_case({"gemini": gemini}, {"L2": "groq"})
+
+    result = await use_case.execute(DelegateTaskRequest(task="t", budget="L2"))
+
+    assert result.success is True
+    assert result.provider == "gemini"
+
+
+@pytest.mark.asyncio
+async def test_request_too_large_skips_tier_without_retrying():
+    from llm_worker_pool.domain.exceptions import RequestTooLargeError
+
+    groq = NamedFakeProvider("groq", responses=[RequestTooLargeError("too big"), _ok("groq")])
+    lite = NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _budget_use_case(
+        {"groq": groq, "gemini-lite": lite}, {"L2": "groq"}, {"groq": ["gemini-lite"]}
+    )
+    use_case._config.retry.max_attempts = 4
+
+    result = await use_case.execute(DelegateTaskRequest(task="t", budget="L2"))
+
+    assert result.provider == "gemini-lite"
+    assert groq.call_count == 1  # not retried: the same prompt would be refused again
+
+
+@pytest.mark.asyncio
+async def test_budget_fallbacks_replace_provider_chain_only_for_budget_routed_requests():
+    def providers():
+        return {
+            "groq": NamedFakeProvider("groq", responses=[ProviderUnavailableError("429")]),
+            "gemini": NamedFakeProvider("gemini", responses=[_ok("gemini")]),
+            "gemini-lite": NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")]),
+        }
+
+    routed = providers()
+    use_case = _budget_use_case(routed, {"L2": "groq"}, {"groq": ["gemini-lite", "gemini"]})
+    use_case._config.budget_fallbacks = {"L2": ["gemini", "gemini-lite"]}
+    assert (await use_case.execute(DelegateTaskRequest(task="t", budget="L2"))).provider == "gemini"
+
+    explicit = providers()
+    use_case = _budget_use_case(explicit, {"L2": "groq"}, {"groq": ["gemini-lite", "gemini"]})
+    use_case._config.budget_fallbacks = {"L2": ["gemini", "gemini-lite"]}
+    result = await use_case.execute(DelegateTaskRequest(task="t", budget="L2", provider="groq"))
+    assert result.provider == "gemini-lite"  # explicit provider keeps its own chain

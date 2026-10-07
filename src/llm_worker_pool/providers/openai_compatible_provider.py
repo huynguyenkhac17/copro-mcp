@@ -15,9 +15,11 @@ import httpx
 from llm_worker_pool.domain.exceptions import (
     InvalidResponseError,
     ProviderTimeoutError,
+    RequestTooLargeError,
     ProviderUnavailableError,
 )
 from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
+from llm_worker_pool.domain.token_estimate import estimate_tokens
 from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
 
 
@@ -31,6 +33,7 @@ class OpenAICompatibleProvider:
         http_client: httpx.AsyncClient | None = None,
         circuit_breaker: KeyCircuitBreaker | None = None,
         per_key_concurrency: int | None = None,
+        max_prompt_tokens: int | None = None,
     ) -> None:
         self._provider_name = provider_name
         self._endpoint = endpoint.rstrip("/")
@@ -39,6 +42,7 @@ class OpenAICompatibleProvider:
         self._key_index = 0
         self._circuit_breaker = circuit_breaker
         self._per_key_concurrency = per_key_concurrency
+        self._max_prompt_tokens = max_prompt_tokens
         self._key_semaphores: dict[str, asyncio.Semaphore] = {}
         if per_key_concurrency and per_key_concurrency > 0:
             for k in self._api_keys:
@@ -89,6 +93,15 @@ class OpenAICompatibleProvider:
         return selected, sem
 
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
+        if self._max_prompt_tokens is not None:
+            estimated = estimate_tokens((options.system_prompt or "") + prompt)
+            if estimated > self._max_prompt_tokens:
+                # Checked before a key is picked: the request never leaves the machine,
+                # so it neither spends quota nor counts against the key's circuit breaker.
+                raise RequestTooLargeError(
+                    f"{self._provider_name}: prompt ~{estimated} tokens exceeds "
+                    f"max_prompt_tokens={self._max_prompt_tokens}; skipped"
+                )
         key, sem = self._select_key()
         if sem:
             async with sem:

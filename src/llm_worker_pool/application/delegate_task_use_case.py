@@ -57,7 +57,7 @@ class DelegateTaskUseCase:
     async def execute(self, request: DelegateTaskRequest) -> DelegateTaskResult:
         profile = self.resolve_budget(request.budget)
 
-        provider_name = request.provider or self._default_provider
+        provider_name = request.provider or self._budget_default_provider(request.budget)
         provider = self._providers.get(provider_name)
         if not provider:
             available = ", ".join(sorted(self._providers))
@@ -103,7 +103,7 @@ class DelegateTaskUseCase:
         # "is there a later tier?" below only counts tiers that can actually answer.
         tiers = [
             self._providers[name]
-            for name in self._fallback_chain(provider_name)
+            for name in self._fallback_chain(provider_name, request)
             if name in self._providers
         ]
         for index, tier in enumerate(tiers):
@@ -285,9 +285,23 @@ class DelegateTaskUseCase:
             return options.model_copy(update={"reasoning_effort": effort})
         return options
 
-    def _fallback_chain(self, provider_name: str) -> list[str]:
+    def _budget_default_provider(self, budget: str) -> str:
+        """Provider used when the request names none: the budget's own pick if that
+        provider is up, otherwise the global default (a budget routed to a vendor whose
+        keys are missing must degrade, not fail every call)."""
+        preferred = self._config.budget_providers.get(budget)
+        if preferred and preferred in self._providers:
+            return preferred
+        return self._default_provider
+
+    def _fallback_chain(self, provider_name: str, request: DelegateTaskRequest) -> list[str]:
         chain = [provider_name]
-        for name in self._config.fallbacks.get(provider_name, []):
+        fallbacks = self._config.fallbacks.get(provider_name, [])
+        # A budget-specific chain applies only when the budget itself chose the provider:
+        # an explicitly requested provider keeps its own chain (or none, for ollama).
+        if request.provider is None and self._config.budget_providers.get(request.budget) == provider_name:
+            fallbacks = self._config.budget_fallbacks.get(request.budget, fallbacks)
+        for name in fallbacks:
             if name not in chain:
                 chain.append(name)
         return chain
