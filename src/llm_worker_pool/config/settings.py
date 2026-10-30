@@ -130,6 +130,21 @@ class CircuitBreakerConfig(BaseModel):
     quarantine_seconds: float = 60.0
 
 
+class QuotaConfig(BaseModel):
+    """Pre-flight quota checks (infra/quota_tracker.py): skip a tier that is known to be
+    out of quota or hanging instead of paying a 429 or a full tier timeout for it."""
+
+    enabled: bool = True
+    safety_margin_tokens: int = 500
+    """Headroom kept below a key's remaining token quota; the chars/4 estimate
+    undercounts code and Vietnamese text."""
+    timeouts_before_block: int = 2
+    """Consecutive unanswered calls before the whole model is skipped for a while."""
+    timeout_block_seconds: float = 120.0
+    daily_quota_block_seconds: float = 3600.0
+    """How long a key is parked after a 429 naming a per-day quota."""
+
+
 class MetricsConfig(BaseModel):
     """Shared JSONL event log (infra/event_log.py) and the `worker-metrics` exporter."""
 
@@ -223,6 +238,7 @@ class AppConfig(BaseSettings):
     jobs: JobsConfig = Field(default_factory=JobsConfig)
     rag: RagConfig = Field(default_factory=RagConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
+    quota: QuotaConfig = Field(default_factory=QuotaConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig)
     eval: EvalConfig = Field(default_factory=EvalConfig)

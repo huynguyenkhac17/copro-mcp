@@ -21,6 +21,7 @@ from llm_worker_pool.domain.models import ProviderResponse
 from llm_worker_pool.infra.cache import InMemoryTTLCache
 from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
 from llm_worker_pool.infra.logging import get_logger
+from llm_worker_pool.infra.quota_tracker import QuotaTracker
 from llm_worker_pool.providers.caching_provider import CachingProvider
 from llm_worker_pool.providers.concurrency_provider import ConcurrencyProvider
 from llm_worker_pool.providers.ollama_provider import OllamaProvider
@@ -61,6 +62,7 @@ def build_openai_compatible(
     name: str,
     config: ProviderInstanceConfig,
     circuit_breaker: KeyCircuitBreaker | None = None,
+    quota_tracker: QuotaTracker | None = None,
     **kwargs,
 ) -> LLMProvider:
     env_vars = _api_key_env_vars(config)
@@ -81,6 +83,7 @@ def build_openai_compatible(
         circuit_breaker=circuit_breaker,
         per_key_concurrency=config.per_key_concurrency,
         max_prompt_tokens=config.max_prompt_tokens,
+        quota_tracker=quota_tracker,
     )
 
 _REGISTRY: dict[str, ProviderBuilder] = {
@@ -109,6 +112,17 @@ class ProviderFactory:
             enabled=cb.enabled,
         )
 
+    def _new_quota_tracker(self) -> QuotaTracker:
+        # Per provider for the same reason as the breaker: quotas are per model.
+        q = self._config.quota
+        return QuotaTracker(
+            enabled=q.enabled,
+            safety_margin_tokens=q.safety_margin_tokens,
+            timeouts_before_block=q.timeouts_before_block,
+            timeout_block_seconds=q.timeout_block_seconds,
+            daily_quota_block_seconds=q.daily_quota_block_seconds,
+        )
+
     def create_all(self) -> dict[str, LLMProvider]:
         providers: dict[str, LLMProvider] = {}
         for name, instance_config in self._config.providers.items():
@@ -125,8 +139,16 @@ class ProviderFactory:
                     name,
                     instance_config,
                     circuit_breaker=self._new_circuit_breaker(),
+                    quota_tracker=self._new_quota_tracker(),
                 )
             except TypeError:
+                # A custom builder that does not take these kwargs runs without either -
+                # say so, rather than silently losing key quarantine and quota checks.
+                _logger.warning(
+                    "Provider '%s': builder takes no circuit_breaker/quota_tracker; "
+                    "running without key quarantine and quota checks",
+                    name,
+                )
                 try:
                     provider = builder(name, instance_config)
                 except ConfigurationError as exc:

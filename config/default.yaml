@@ -186,6 +186,20 @@ circuit_breaker:
   failure_threshold: 3
   quarantine_seconds: 60.0
 
+quota:
+  # Pre-flight checks (infra/quota_tracker.py): a tier known to be out of quota or
+  # hanging is skipped before the call when a fallback tier is behind it; the last
+  # tier is always tried. Signals: Groq x-ratelimit-* headers on every response,
+  # retryDelay / Retry-After on a 429 (Gemini sends no rate-limit headers at all),
+  # and calls cancelled by the tier deadline (gemini-flash hangs rather than 429s).
+  enabled: true
+  safety_margin_tokens: 500
+  # Two unanswered calls in a row -> skip the model for timeout_block_seconds.
+  timeouts_before_block: 2
+  timeout_block_seconds: 120
+  # A 429 naming a per-day quota parks that key this long, not just its retryDelay.
+  daily_quota_block_seconds: 3600
+
 metrics:
   # Every server instance appends one JSONL line per call to the shared event log;
   # `worker-metrics` (separate process, [metrics] extra) serves it as Prometheus

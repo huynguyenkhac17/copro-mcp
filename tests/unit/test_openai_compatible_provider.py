@@ -215,3 +215,147 @@ def test_strict_mode_only_for_strict_compatible_schemas():
     assert _is_strict_compatible(loose) is False
     assert _is_strict_compatible(nested_loose) is False
     assert _is_strict_compatible(partial_required) is False
+
+
+# --- quota-aware key selection (infra/quota_tracker.py) ---------------------------
+
+import asyncio
+
+from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
+from llm_worker_pool.infra.quota_tracker import QuotaTracker
+
+
+def _quota_provider(api_keys, handler, **tracker_kwargs) -> OpenAICompatibleProvider:
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=None)
+    return OpenAICompatibleProvider(
+        provider_name="fake",
+        endpoint="https://example.invalid/v1",
+        model="fake-model",
+        api_keys=api_keys,
+        http_client=client,
+        circuit_breaker=KeyCircuitBreaker(failure_threshold=3, quarantine_seconds=60),
+        quota_tracker=QuotaTracker(**tracker_kwargs),
+    )
+
+
+@pytest.mark.asyncio
+async def test_key_reported_out_of_tokens_is_skipped():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        auth = request.headers["Authorization"]
+        seen.append(auth)
+        remaining = "0" if auth == "Bearer key-a" else "8000"
+        return httpx.Response(
+            200,
+            headers={"x-ratelimit-remaining-tokens": remaining, "x-ratelimit-reset-tokens": "30s"},
+            json={"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]},
+        )
+
+    provider = _quota_provider(["key-a", "key-b"], handler)
+    for _ in range(3):
+        await provider.generate("p", GenerationOptions())
+
+    # key-a answered once, reported 0 tokens left, and is not picked again.
+    assert seen == ["Bearer key-a", "Bearer key-b", "Bearer key-b"]
+
+
+@pytest.mark.asyncio
+async def test_429_with_retry_delay_parks_the_key():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        auth = request.headers["Authorization"]
+        seen.append(auth)
+        if auth == "Bearer key-a":
+            return httpx.Response(429, text='{"error": {"details": [{"retryDelay": "40s"}]}}')
+        return _ok_response(request)
+
+    provider = _quota_provider(["key-a", "key-b"], handler)
+    with pytest.raises(Exception):
+        await provider.generate("p", GenerationOptions())
+    await provider.generate("p", GenerationOptions())
+    await provider.generate("p", GenerationOptions())
+
+    assert seen == ["Bearer key-a", "Bearer key-b", "Bearer key-b"]
+
+
+@pytest.mark.asyncio
+async def test_unready_when_every_key_is_parked_and_last_tier_still_sends():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(429, text='{"error": {"details": [{"retryDelay": "40s"}]}}')
+
+    provider = _quota_provider(["key-a"], handler)
+    with pytest.raises(Exception):
+        await provider.generate("p", GenerationOptions())
+
+    reason = provider.unready_reason("p", GenerationOptions())
+    assert reason is not None and reason.startswith("quota_exhausted_locally")
+    assert "key-a" not in reason
+
+    # Called directly (= as the last tier), it still goes out instead of refusing.
+    with pytest.raises(Exception):
+        await provider.generate("p", GenerationOptions())
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelled_hang_is_recorded_and_blocks_model():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(10)
+        return _ok_response(request)
+
+    provider = _quota_provider(["key-a"], handler, timeouts_before_block=2)
+    for _ in range(2):
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(provider.generate("p", GenerationOptions()), timeout=0.05)
+
+    assert provider.circuit_breaker.get_stats()  # breaker saw the failures
+    reason = provider.unready_reason("p", GenerationOptions())
+    assert reason is not None and reason.startswith("model_unresponsive_locally")
+    # Reservations were released even though the call was cancelled.
+    assert provider.quota_tracker.can_serve("key-a", 1)
+
+
+@pytest.mark.asyncio
+async def test_without_tracker_provider_is_always_ready():
+    provider = _make_provider(["key-a"], _ok_response)
+    assert provider.unready_reason("p", GenerationOptions()) is None
+
+
+@pytest.mark.asyncio
+async def test_quota_is_reserved_while_waiting_on_a_busy_key():
+    release = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await release.wait()
+        return _ok_response(request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=None)
+    tracker = QuotaTracker()
+    provider = OpenAICompatibleProvider(
+        provider_name="fake",
+        endpoint="https://example.invalid/v1",
+        model="fake-model",
+        api_keys=["key-a"],
+        http_client=client,
+        per_key_concurrency=1,
+        quota_tracker=tracker,
+    )
+    prompt = "x" * 2400  # ~600 tokens each
+    first = asyncio.create_task(provider.generate(prompt, GenerationOptions()))
+    await asyncio.sleep(0)
+    second = asyncio.create_task(provider.generate(prompt, GenerationOptions()))
+    await asyncio.sleep(0.01)
+
+    # The second call is queued on the semaphore, yet its tokens already count.
+    assert tracker._state("key-a").reserved_requests == 2
+
+    release.set()
+    await asyncio.gather(first, second)
+    assert tracker._state("key-a").reserved_requests == 0
+    assert tracker._state("key-a").reserved_tokens == 0

@@ -33,6 +33,10 @@ class ConcurrencyProvider:
     def thinking_option(self) -> str | None:
         return getattr(self._inner, "thinking_option", "think")
 
+    def unready_reason(self, prompt: str, options: GenerationOptions) -> str | None:
+        check = getattr(self._inner, "unready_reason", None)
+        return check(prompt, options) if check else None
+
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         async with self._semaphore:
             return await self._inner.generate(prompt, options)

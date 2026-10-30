@@ -120,6 +120,7 @@ class DelegateTaskUseCase:
         used_options = options  # what the answering tier was actually sent (see _tier_options)
         used_timeout = timeout  # and the timeout it ran under (see _tier_timeout)
         failures: list[str] = []
+        quota_skips: list[str] = []
         # Tiers skipped at startup (e.g. their API keys are unset) are dropped up front so
         # "is there a later tier?" below only counts tiers that can actually answer.
         tiers = [self._providers[name] for name in chain if name in self._providers]
@@ -127,6 +128,17 @@ class DelegateTaskUseCase:
             has_next = index < len(tiers) - 1
             tier_timeout = self._tier_timeout(timeout, has_next)
             tier_options = self._tier_options(options, is_fallback=index > 0)
+            if has_next:
+                # Skip a tier already known to be out of quota or hanging. The last tier is
+                # always tried: failing fast there would only turn a slow answer into none.
+                check = getattr(tier, "unready_reason", None)
+                reason = check(built.user_prompt, tier_options) if check else None
+                if reason:
+                    quota_skips.append(f"quota_skip:{tier.provider_name}")
+                    failures.append(f"{tier.provider_name}: {self._short_error(reason)}")
+                    provider = tier
+                    error = reason
+                    continue
             tier_start = time.monotonic()
             try:
                 response = await self._call_provider(
@@ -197,7 +209,7 @@ class DelegateTaskUseCase:
             except (TimeoutError, LocalAIGatewayError):
                 pass  # keep the original (empty) response, fall through to the warning below
 
-        warnings = [*file_warnings, *redaction_warnings, *built.warnings]
+        warnings = [*file_warnings, *redaction_warnings, *built.warnings, *quota_skips]
         if failures:
             warnings.append(
                 f"fallback_used:{provider.provider_name} after " + "; ".join(failures)

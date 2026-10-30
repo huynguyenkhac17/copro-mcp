@@ -21,6 +21,7 @@ from llm_worker_pool.domain.exceptions import (
 from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
 from llm_worker_pool.domain.token_estimate import estimate_tokens
 from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
+from llm_worker_pool.infra.quota_tracker import QuotaTracker
 
 
 class OpenAICompatibleProvider:
@@ -34,6 +35,7 @@ class OpenAICompatibleProvider:
         circuit_breaker: KeyCircuitBreaker | None = None,
         per_key_concurrency: int | None = None,
         max_prompt_tokens: int | None = None,
+        quota_tracker: QuotaTracker | None = None,
     ) -> None:
         self._provider_name = provider_name
         self._endpoint = endpoint.rstrip("/")
@@ -43,6 +45,7 @@ class OpenAICompatibleProvider:
         self._circuit_breaker = circuit_breaker
         self._per_key_concurrency = per_key_concurrency
         self._max_prompt_tokens = max_prompt_tokens
+        self._quota = quota_tracker
         self._key_semaphores: dict[str, asyncio.Semaphore] = {}
         if per_key_concurrency and per_key_concurrency > 0:
             for k in self._api_keys:
@@ -66,13 +69,60 @@ class OpenAICompatibleProvider:
     def circuit_breaker(self) -> KeyCircuitBreaker | None:
         return self._circuit_breaker
 
-    def _select_key(self) -> tuple[str, asyncio.Semaphore | None]:
+    @property
+    def quota_tracker(self) -> QuotaTracker | None:
+        return self._quota
+
+    def _estimate(self, prompt: str, options: GenerationOptions) -> int:
+        return estimate_tokens((options.system_prompt or "") + prompt)
+
+    def _servable_keys(self, est_tokens: int) -> list[str]:
+        keys = self._api_keys
+        if self._circuit_breaker:
+            keys = [k for k in keys if self._circuit_breaker.is_available(k)]
+        if self._quota:
+            keys = [k for k in keys if self._quota.can_serve(k, est_tokens)]
+        return keys
+
+    def unready_reason(self, prompt: str, options: GenerationOptions) -> str | None:
+        """Why this provider should be skipped right now, or None if it can take the call.
+
+        Asked by the fallback loop before a tier that still has a fallback behind it, so a
+        tier known to be saturated costs nothing instead of a 429 or a full tier timeout.
+        The last tier is always attempted regardless (see `_select_key`)."""
+        if self._quota is None or not self._quota.enabled:
+            return None
+        blocked = self._quota.model_blocked_for()
+        if blocked > 0:
+            return (
+                f"model_unresponsive_locally: {self._provider_name} skipped for another "
+                f"{blocked:.0f}s after repeated timeouts"
+            )
+        if self._servable_keys(self._estimate(prompt, options)):
+            return None
+        for key in self._api_keys:
+            self._quota.note_skip(key)
+        wait = self._quota.next_available_in(self._api_keys)
+        hint = f"; earliest key free in {wait:.0f}s" if wait > 0 else ""
+        return (
+            f"quota_exhausted_locally: no {self._provider_name} key has quota left "
+            f"for this request{hint}"
+        )
+
+    def _select_key(self, est_tokens: int = 0) -> tuple[str, asyncio.Semaphore | None]:
         candidates = self._api_keys
         if self._circuit_breaker:
             candidates = self._circuit_breaker.filter_available_keys(self._api_keys)
 
         if not candidates:
             candidates = self._api_keys
+
+        if self._quota:
+            # Prefer keys with quota left; when none has any (this provider is the last
+            # tier, or the estimate is pessimistic), fall back to the breaker's choice
+            # rather than refusing outright.
+            with_quota = [k for k in candidates if self._quota.can_serve(k, est_tokens)]
+            candidates = with_quota or candidates
 
         # If per-key semaphores are enabled, try finding a key that isn't locked (free slot available)
         if self._key_semaphores:
@@ -102,11 +152,27 @@ class OpenAICompatibleProvider:
                     f"{self._provider_name}: prompt ~{estimated} tokens exceeds "
                     f"max_prompt_tokens={self._max_prompt_tokens}; skipped"
                 )
-        key, sem = self._select_key()
-        if sem:
-            async with sem:
-                return await self._execute_generate(prompt, options, key)
-        return await self._execute_generate(prompt, options, key)
+        est_tokens = self._estimate(prompt, options)
+        key, sem = self._select_key(est_tokens)
+        # Reserved right after the pick, with no await in between - in particular BEFORE
+        # waiting on the key's semaphore. Reserving only once the semaphore is held let
+        # every caller queued on a busy key read its quota as still untouched.
+        if self._quota:
+            self._quota.reserve(key, est_tokens)
+        try:
+            if sem:
+                async with sem:
+                    return await self._execute_generate(prompt, options, key)
+            return await self._execute_generate(prompt, options, key)
+        finally:
+            if self._quota:
+                self._quota.release(key, est_tokens)
+
+    def _record_timeout(self, key: str) -> None:
+        if self._circuit_breaker:
+            self._circuit_breaker.record_failure(key)
+        if self._quota:
+            self._quota.record_timeout()
 
     async def _execute_generate(
         self, prompt: str, options: GenerationOptions, key: str
@@ -160,6 +226,13 @@ class OpenAICompatibleProvider:
                 json=payload,
                 headers=headers,
             )
+        except asyncio.CancelledError:
+            # The tier deadline (asyncio.wait_for in the use case) cancels a call that
+            # never answered. That is this provider's commonest failure - a model that
+            # accepts the request and hangs - and before this it was never recorded,
+            # so every request waited out the full tier timeout on it again.
+            self._record_timeout(key)
+            raise
         except httpx.ConnectError as exc:
             if self._circuit_breaker:
                 self._circuit_breaker.record_failure(key)
@@ -167,8 +240,7 @@ class OpenAICompatibleProvider:
                 f"Could not connect to {self._provider_name} at {self._endpoint}: {exc}"
             ) from exc
         except httpx.TimeoutException as exc:
-            if self._circuit_breaker:
-                self._circuit_breaker.record_failure(key)
+            self._record_timeout(key)
             raise ProviderTimeoutError(f"{self._provider_name} timeout: {exc}") from exc
         except httpx.HTTPError as exc:
             if self._circuit_breaker:
@@ -176,6 +248,11 @@ class OpenAICompatibleProvider:
             raise ProviderUnavailableError(f"HTTP error when calling {self._provider_name}: {exc}") from exc
 
         latency_ms = (time.monotonic() - start) * 1000
+
+        if self._quota:
+            self._quota.observe_headers(key, response.headers)
+            if response.status_code == 429:
+                self._quota.observe_rate_limited(key, response.headers, response.text)
 
         if response.status_code != 200:
             if self._circuit_breaker:
@@ -191,6 +268,8 @@ class OpenAICompatibleProvider:
 
         if self._circuit_breaker:
             self._circuit_breaker.record_success(key)
+        if self._quota:
+            self._quota.record_success()
 
         try:
             data = response.json()

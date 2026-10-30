@@ -34,6 +34,13 @@ class CachingProvider:
     def thinking_option(self) -> str | None:
         return getattr(self._inner, "thinking_option", "think")
 
+    def unready_reason(self, prompt: str, options: GenerationOptions) -> str | None:
+        # A cached answer costs no quota, so a saturated provider is still "ready" for it.
+        if self._cache.get(self._make_key(prompt, options)) is not None:
+            return None
+        check = getattr(self._inner, "unready_reason", None)
+        return check(prompt, options) if check else None
+
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         key = self._make_key(prompt, options)
 

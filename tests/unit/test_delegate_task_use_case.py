@@ -768,3 +768,54 @@ async def test_budget_fallbacks_replace_provider_chain_only_for_budget_routed_re
     use_case._config.budget_fallbacks = {"L2": ["gemini", "gemini-lite"]}
     result = await use_case.execute(DelegateTaskRequest(task="t", budget="L2", provider="groq"))
     assert result.provider == "gemini-lite"  # explicit provider keeps its own chain
+
+
+class UnreadyProvider(NamedFakeProvider):
+    """A tier that reports itself saturated before being called."""
+
+    def __init__(self, name: str, reason: str | None, **kwargs) -> None:
+        super().__init__(name, **kwargs)
+        self._reason = reason
+
+    def unready_reason(self, prompt, options):
+        return self._reason
+
+
+@pytest.mark.asyncio
+async def test_unready_tier_is_skipped_without_a_call():
+    gemini = UnreadyProvider("gemini", "quota_exhausted_locally: no gemini key has quota left")
+    lite = NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case({"gemini": gemini, "gemini-lite": lite}, {"gemini": ["gemini-lite"]})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert result.provider == "gemini-lite"
+    assert gemini.call_count == 0
+    assert "quota_skip:gemini" in result.warnings
+    assert any("quota_exhausted_locally" in w for w in result.warnings if w.startswith("fallback_used:"))
+
+
+@pytest.mark.asyncio
+async def test_unready_last_tier_is_still_tried():
+    gemini = UnreadyProvider("gemini", "quota_exhausted_locally: x", responses=[_ok("gemini")])
+    use_case = _chain_use_case({"gemini": gemini}, {})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True
+    assert gemini.call_count == 1
+    assert not any(w.startswith("quota_skip") for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_every_tier_unready_or_failing_reports_the_skip():
+    gemini = UnreadyProvider("gemini", "model_unresponsive_locally: gemini skipped")
+    groq = NamedFakeProvider("groq", responses=[ProviderUnavailableError("503")])
+    use_case = _chain_use_case({"gemini": gemini, "groq": groq}, {"gemini": ["groq"]})
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is False
+    assert "model_unresponsive_locally" in result.error
+    assert groq.call_count >= 1
