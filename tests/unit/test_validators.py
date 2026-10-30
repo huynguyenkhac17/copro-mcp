@@ -81,3 +81,21 @@ def test_wrong_line_with_real_quote_reports_where_it_is():
     assert far.status == "quote_not_found" and far.found_at_line == 3
     assert "found at line 3" in citation_warnings(v.validate([Citation(file="orders.py", line=40, quote="return b")]))[0]
     assert v.check(Citation(file="orders.py", line=1, quote="nowhere()")).found_at_line is None
+
+
+def test_overescaped_quote_still_matches():
+    # Live case 2026-10-31: the quote came back with \" for every " in the code.
+    code = "def find(cursor, customer):\n    cursor.execute(f\"SELECT * FROM orders WHERE customer = '{customer}'\")\n"
+    v = CitationValidator({"orders.py": code})
+    quote = "cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")"
+    assert "\\\"" in quote
+    assert v.check(Citation(file="orders.py", line=2, quote=quote)).status == "ok"
+    far = v.check(Citation(file="orders.py", line=40, quote=quote))
+    assert far.found_at_line == 2
+
+
+def test_code_that_really_contains_backslash_quote_matches_literally():
+    code = 'msg = "say \\"hi\\""\n'
+    v = CitationValidator({"a.py": code})
+    assert v.check(Citation(file="a.py", line=1, quote='msg = "say \\"hi\\""')).status == "ok"
+    assert v.check(Citation(file="a.py", line=1, quote="something else")).status == "quote_not_found"

@@ -30,6 +30,18 @@ _TABLE_CITATION_RE = re.compile(r"\|\s*`?" + _PATH + r"`?\s*\|\s*L?(\d{1,6})\s*\
 _WORDED_CITATION_RE = re.compile(_PATH + r"`?[\s,(:-]{1,4}lines?\s+(\d{1,6})\b", re.IGNORECASE)
 QUOTE_WINDOW_LINES = 3
 """A quote counts as found if it appears within this many lines of the cited one."""
+# A backslash before a quote or another backslash: what a worker leaves when it
+# JSON-escapes the code it quotes one time too many.
+_OVERESCAPED_RE = re.compile(r"""\\(["'\\])""")
+
+
+def _quote_variants(quote: str) -> list[str]:
+    """The quote as given, then with one layer of escaping removed. Seen live
+    (2026-10-31): both review providers quoted `f"SELECT ..."` as `f\\"SELECT ...\\"`,
+    so a real SQL injection finding came back quote_not_found. The literal form is
+    tried first, so code that really contains `\\"` still matches as itself."""
+    unescaped = _OVERESCAPED_RE.sub(r"\1", quote)
+    return [quote] if unescaped == quote else [quote, unescaped]
 
 
 class Citation(BaseModel):
@@ -132,13 +144,21 @@ class CitationValidator:
             if not 1 <= citation.line <= len(lines):
                 continue
             resolved = path
-            if citation.quote and not self._quote_near(lines, citation.line, citation.quote):
+            if citation.quote and not any(
+                self._quote_near(lines, citation.line, q) for q in _quote_variants(citation.quote)
+            ):
                 status = "quote_not_found"
                 continue
             return CitationCheck(file=citation.file, line=citation.line, status="ok", resolved_file=path)
         found_at = None
         if citation.quote and resolved is not None:
-            found_at = self._find_quote(self._lines[resolved], citation.quote)
+            found_at = next(
+                (
+                    at for q in _quote_variants(citation.quote)
+                    if (at := self._find_quote(self._lines[resolved], q)) is not None
+                ),
+                None,
+            )
             if found_at is not None and status == "line_out_of_range":
                 status = "quote_not_found"  # line is wrong, the code itself exists
         return CitationCheck(
