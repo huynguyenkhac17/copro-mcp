@@ -15,6 +15,18 @@ from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions
 from llm_worker_pool.domain.prompt_builder import PromptBuilder
 
 
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    """Windows refuses symlinks without Developer Mode or admin (WinError 1314);
+    skip rather than fail, since the guardrail under test was never reached. Any
+    other OSError still fails the test."""
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 1314:
+            raise
+        pytest.skip(f"cannot create symlinks here: {exc}")
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -76,7 +88,7 @@ async def test_resolver_denies_symlink_pointing_at_sensitive_file(tmp_path: Path
     env = tmp_path / ".env"
     env.write_text("x")
     link = tmp_path / "notes.txt"
-    link.symlink_to(env)
+    _symlink_or_skip(link, env)
     resolver = FileContextResolver(allowed_roots=[tmp_path], deny_list=PathDenyList())
 
     result = await resolver.aresolve([str(link)], query="q")
@@ -91,7 +103,7 @@ async def test_directory_listing_no_longer_follows_symlink_out_of_root(tmp_path:
     root.mkdir()
     outside = tmp_path / "outside.txt"
     outside.write_text("outside data")
-    (root / "link.txt").symlink_to(outside)
+    _symlink_or_skip(root / "link.txt", outside)
     resolver = FileContextResolver(allowed_roots=[root], deny_list=PathDenyList())
 
     result = await resolver.aresolve([str(root)], query="q")
