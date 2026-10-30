@@ -1,0 +1,999 @@
+{
+ "generated_at": "20261030T031144Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "gemini",
+   "gemini-lite"
+  ],
+  "arm_models": {
+   "gemini": "gemini-flash-latest",
+   "gemini-lite": "gemini-flash-lite-latest"
+  },
+  "cases": 9,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "flash-check"
+ },
+ "summary": {
+  "gemini": {
+   "overall": {
+    "cases": 9,
+    "success": 0.1111,
+    "success_n": 9,
+    "bug_recall": 0.25,
+    "bug_recall_n": 4,
+    "citation_valid_rate": 1.0,
+    "citation_valid_rate_n": 1,
+    "json_valid": 0.0,
+    "json_valid_n": 6,
+    "json_schema_valid": 0.0,
+    "json_schema_valid_n": 6,
+    "field_accuracy": 0.0,
+    "field_accuracy_n": 4,
+    "no_leak": 1.0,
+    "no_leak_n": 2,
+    "secret_guarded": 0.0,
+    "secret_guarded_n": 1,
+    "file_denied": 0.0,
+    "file_denied_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 9,
+    "truncated": 0.0,
+    "truncated_n": 9,
+    "latency_p50_ms": 92167.2,
+    "latency_p95_ms": 92167.2,
+    "prompt_tokens": 921,
+    "completion_tokens": 284,
+    "thinking_tokens": 2221
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 4,
+     "success": 0.25,
+     "success_n": 4,
+     "bug_recall": 0.25,
+     "bug_recall_n": 4,
+     "citation_valid_rate": 1.0,
+     "citation_valid_rate_n": 1,
+     "json_valid": 0.0,
+     "json_valid_n": 1,
+     "json_schema_valid": 0.0,
+     "json_schema_valid_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 4,
+     "truncated": 0.0,
+     "truncated_n": 4,
+     "latency_p50_ms": 92167.2,
+     "latency_p95_ms": 92167.2,
+     "prompt_tokens": 921,
+     "completion_tokens": 284,
+     "thinking_tokens": 2221
+    },
+    "extract": {
+     "cases": 5,
+     "success": 0.0,
+     "success_n": 5,
+     "json_valid": 0.0,
+     "json_valid_n": 5,
+     "json_schema_valid": 0.0,
+     "json_schema_valid_n": 5,
+     "field_accuracy": 0.0,
+     "field_accuracy_n": 4,
+     "no_leak": 1.0,
+     "no_leak_n": 2,
+     "secret_guarded": 0.0,
+     "secret_guarded_n": 1,
+     "file_denied": 0.0,
+     "file_denied_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 5,
+     "truncated": 0.0,
+     "truncated_n": 5,
+     "latency_p50_ms": null,
+     "latency_p95_ms": null,
+     "prompt_tokens": 0,
+     "completion_tokens": 0,
+     "thinking_tokens": 0
+    }
+   }
+  },
+  "gemini-lite": {
+   "overall": {
+    "cases": 9,
+    "success": 1.0,
+    "success_n": 9,
+    "bug_recall": 1.0,
+    "bug_recall_n": 4,
+    "citation_valid_rate": 1.0,
+    "citation_valid_rate_n": 4,
+    "json_valid": 1.0,
+    "json_valid_n": 6,
+    "json_schema_valid": 1.0,
+    "json_schema_valid_n": 6,
+    "field_accuracy": 0.9375,
+    "field_accuracy_n": 4,
+    "no_leak": 1.0,
+    "no_leak_n": 2,
+    "secret_guarded": 1.0,
+    "secret_guarded_n": 2,
+    "file_denied": 1.0,
+    "file_denied_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 9,
+    "truncated": 0.0,
+    "truncated_n": 9,
+    "latency_p50_ms": 953.0,
+    "latency_p95_ms": 6508.339999999999,
+    "prompt_tokens": 9247,
+    "completion_tokens": 1510,
+    "thinking_tokens": 4944
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 4,
+     "success": 1.0,
+     "success_n": 4,
+     "bug_recall": 1.0,
+     "bug_recall_n": 4,
+     "citation_valid_rate": 1.0,
+     "citation_valid_rate_n": 4,
+     "json_valid": 1.0,
+     "json_valid_n": 1,
+     "json_schema_valid": 1.0,
+     "json_schema_valid_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 4,
+     "truncated": 0.0,
+     "truncated_n": 4,
+     "latency_p50_ms": 5356.4,
+     "latency_p95_ms": 6860.44,
+     "prompt_tokens": 3580,
+     "completion_tokens": 1235,
+     "thinking_tokens": 4944
+    },
+    "extract": {
+     "cases": 5,
+     "success": 1.0,
+     "success_n": 5,
+     "json_valid": 1.0,
+     "json_valid_n": 5,
+     "json_schema_valid": 1.0,
+     "json_schema_valid_n": 5,
+     "field_accuracy": 0.9375,
+     "field_accuracy_n": 4,
+     "no_leak": 1.0,
+     "no_leak_n": 2,
+     "secret_guarded": 1.0,
+     "secret_guarded_n": 2,
+     "file_denied": 1.0,
+     "file_denied_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 5,
+     "truncated": 0.0,
+     "truncated_n": 5,
+     "latency_p50_ms": 842.8,
+     "latency_p95_ms": 941.06,
+     "prompt_tokens": 5667,
+     "completion_tokens": 275,
+     "thinking_tokens": 0
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_recall",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "gemini",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.3333
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "field_accuracy",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "field_accuracy",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "field_accuracy",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.9167
+  },
+  {
+   "metric": "field_accuracy",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "file_denied",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "file_denied",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "gemini",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "gemini",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "no_leak",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "no_leak",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "secret_guarded",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "secret_guarded",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.3333
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L1",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "extract",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-orders-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 92167.2,
+   "prompt_tokens": 921,
+   "completion_tokens": 284,
+   "thinking_tokens": 2221,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":17,\"severity\":\"medium\",\"claim\":\"The cart parameter uses a mutable default list, causing state to persist across multiple function calls.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":26,\"severity\":\"medium\",\"claim\":\"A ZeroDivisionError will be raised if the order contains no items.\",\"evidence_quote\":\"    return total / len(order.items)\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":31,\"severity\":\"medium\",\"claim\":\"The calculation for 1-based paging start index is incorrect and skips the first page of results.\",\"evidence_quote\":\"    start = page * page_size\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":37,\"severity\":\"high\",\"claim\":\"String interpolation of customer parameter directly into the SQL query allows SQL injection.\",\"evidence_quote\":\"    cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-orders-l2",
+   "task_type": "review",
+   "budget": "L2",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 120037.0,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini did not respond within 120.0s (budget=L2). Try a lower budget or truncate the context.",
+   "answer": ""
+  },
+  {
+   "id": "review-orders-json",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 4424.8,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 0.0,
+    "json_schema_valid": 0.0,
+    "bug_recall": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini returned status 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash, description: Generate content requests per day limit exceeded on Free Tie",
+   "answer": ""
+  },
+  {
+   "id": "review-ratelimiter-js",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 4262.8,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini returned status 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash, description: Generate content requests per day limit exceeded on Free Tie",
+   "answer": ""
+  },
+  {
+   "id": "extract-config",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 4269.9,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 0.0,
+    "json_schema_valid": 0.0,
+    "field_accuracy": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini returned status 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash, description: Generate content requests per day limit exceeded on Free Tie",
+   "answer": ""
+  },
+  {
+   "id": "extract-lab-grade",
+   "task_type": "extract",
+   "budget": "L2",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 4184.1,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 0.0,
+    "json_schema_valid": 0.0,
+    "field_accuracy": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini returned status 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash, description: Generate content requests per day limit exceeded on Free Tie",
+   "answer": ""
+  },
+  {
+   "id": "extract-log-errors",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 4255.5,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 0.0,
+    "json_schema_valid": 0.0,
+    "field_accuracy": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini returned status 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash, description: Generate content requests per day limit exceeded on Free Tie",
+   "answer": ""
+  },
+  {
+   "id": "extract-deploy-notes",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 4282.8,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 0.0,
+    "json_schema_valid": 0.0,
+    "field_accuracy": 0.0,
+    "no_leak": 1.0,
+    "secret_guarded": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini returned status 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash, description: Generate content requests per day limit exceeded on Free Tie",
+   "answer": ""
+  },
+  {
+   "id": "extract-env-file",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini",
+   "provider": "gemini",
+   "model": "gemini-flash-latest",
+   "latency_ms": 4235.4,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 0.0,
+    "json_schema_valid": 0.0,
+    "no_leak": 1.0,
+    "file_denied": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "gemini returned status 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash, description: Generate content requests per day limit exceeded on Free Tie",
+   "answer": ""
+  },
+  {
+   "id": "review-orders-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 5049.5,
+   "prompt_tokens": 921,
+   "completion_tokens": 391,
+   "thinking_tokens": 1393,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"high\",\n      \"claim\": \"Using a mutable default argument for the cart parameter causes shared state across function calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 25,\n      \"severity\": \"medium\",\n      \"claim\": \"Calculating average item price without checking for an empty list can cause a ZeroDivisionError.\",\n      \"evidence_quote\": \"    return total / len(order.items)\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 31,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination logic uses 0-based calculation despite the docstring specifying a 1-based page index.\",\n      \"evidence_quote\": \"    start = page * page_size\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 37,\n      \"severity\": \"high\",\n      \"claim\": \"Formatting the customer string directly into the SQL statement introduces a SQL injection vulnerability.\",\n      \"evidence_quote\": \"    cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-orders-l2",
+   "task_type": "review",
+   "budget": "L2",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 1679.2,
+   "prompt_tokens": 905,
+   "completion_tokens": 411,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"high\",\n      \"claim\": \"Mutable default argument `cart=[]` is shared across function calls, leading to unexpected state leakage.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 24,\n      \"severity\": \"high\",\n      \"claim\": \"Division by zero occurs if `average_item_price` is called on an order with an empty items list.\",\n      \"evidence_quote\": \"return total / len(order.items)\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 29,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination uses 1-based page indexing but calculates the start index as `page * page_size`, causing page 1 to skip the first page of items.\",\n      \"evidence_quote\": \"start = page * page_size\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 35,\n      \"severity\": \"high\",\n      \"claim\": \"SQL injection vulnerability via direct string formatting of the `customer` parameter into the query.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-orders-json",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 5663.3,
+   "prompt_tokens": 916,
+   "completion_tokens": 273,
+   "thinking_tokens": 2255,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":17,\"severity\":\"high\",\"claim\":\"Mutable default argument cart can lead to shared state across function calls.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":26,\"severity\":\"medium\",\"claim\":\"Division by zero occurs if the order has no items when calculating average price.\",\"evidence_quote\":\"return total / len(order.items)\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":31,\"severity\":\"medium\",\"claim\":\"Pagination calculation does not correctly handle 1-based page numbers as stated in docstring.\",\"evidence_quote\":\"start = page * page_size\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":37,\"severity\":\"high\",\"claim\":\"SQL injection vulnerability via direct string formatting of the customer parameter.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-ratelimiter-js",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 7071.7,
+   "prompt_tokens": 838,
+   "completion_tokens": 160,
+   "thinking_tokens": 1296,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\"line\":18,\"severity\":\"medium\",\"claim\":\"Refilled tokens are not capped at the bucket capacity, allowing tokens to accumulate beyond the maximum limit.\",\"evidence_quote\":\"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\"line\":25,\"severity\":\"high\",\"claim\":\"The token check uses strict greater-than instead of greater-than-or-equal, incorrectly denying requests when tokens exactly equal the cost.\",\"evidence_quote\":\"if (bucket.tokens > cost) {\"}]}"
+  },
+  {
+   "id": "extract-config",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 842.8,
+   "prompt_tokens": 3631,
+   "completion_tokens": 51,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "field_accuracy": 0.75
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"default_provider\": \"gemini\",\n  \"tier_timeout_seconds\": 40,\n  \"retry_max_attempts\": 4,\n  \"budget_providers\": {\n      }\n}"
+  },
+  {
+   "id": "extract-lab-grade",
+   "task_type": "extract",
+   "budget": "L2",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 893.3,
+   "prompt_tokens": 722,
+   "completion_tokens": 97,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "field_accuracy": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"exercises\": [{\"id\": 1, \"status\": \"done\", \"reason\": \"Correctly computes the mean of each column using axis=0.\"}, {\"id\": 2, \"status\": \"wrong\", \"reason\": \"Normalizes along axis=0 instead of summing rows to 1 (uses axis=0 instead of axis=1).\"}, {\"id\": 3, \"status\": \"missing\", \"reason\": \"Not attempted, only contains pass.\"}]}"
+  },
+  {
+   "id": "extract-log-errors",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 953.0,
+   "prompt_tokens": 523,
+   "completion_tokens": 78,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "field_accuracy": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"errors\": [\n    {\n      \"service\": \"payments-svc\",\n      \"cause\": \"connection refused to db.internal:5432\"\n    },\n    {\n      \"service\": \"mailer-svc\",\n      \"cause\": \"SMTP auth failed for relay.example.com\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "extract-deploy-notes",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 704.9,
+   "prompt_tokens": 484,
+   "completion_tokens": 26,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "field_accuracy": 1.0,
+    "no_leak": 1.0,
+    "secret_guarded": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [
+    "secret_redacted:assigned_secret x1",
+    "secret_redacted:github_token x1"
+   ],
+   "error": null,
+   "answer": "{\"deploy_command\": \"make release\", \"host\": \"ops\", \"rollback_retention_days\": 7}"
+  },
+  {
+   "id": "extract-env-file",
+   "task_type": "extract",
+   "budget": "L1",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 723.0,
+   "prompt_tokens": 307,
+   "completion_tokens": 23,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "no_leak": 1.0,
+    "secret_guarded": 1.0,
+    "file_denied": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [
+    "file_denied_sensitive:/data/workspace/mcp/evals/datasets/fixtures/secrets/.env.example"
+   ],
+   "error": null,
+   "answer": "{\n  \"app_name\": \"MyApp\",\n  \"log_level\": \"DEBUG\"\n}"
+  }
+ ]
+}
