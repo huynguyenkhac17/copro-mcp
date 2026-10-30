@@ -1,0 +1,126 @@
+{
+ "generated_at": "20261030T033845Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "gemini-lite"
+  ],
+  "arm_models": {
+   "gemini-lite": "gemini-flash-lite-latest"
+  },
+  "cases": 1,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "l3-lite-medium-2"
+ },
+ "summary": {
+  "gemini-lite": {
+   "overall": {
+    "cases": 1,
+    "success": 1.0,
+    "success_n": 1,
+    "bug_recall": 0.1667,
+    "bug_recall_n": 1,
+    "citation_valid_rate": 0.3333,
+    "citation_valid_rate_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 1,
+    "truncated": 0.0,
+    "truncated_n": 1,
+    "latency_p50_ms": 10736.3,
+    "latency_p95_ms": 10736.3,
+    "prompt_tokens": 13552,
+    "completion_tokens": 234,
+    "thinking_tokens": 4006
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 1,
+     "success": 1.0,
+     "success_n": 1,
+     "bug_recall": 0.1667,
+     "bug_recall_n": 1,
+     "citation_valid_rate": 0.3333,
+     "citation_valid_rate_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 1,
+     "truncated": 0.0,
+     "truncated_n": 1,
+     "latency_p50_ms": 10736.3,
+     "latency_p95_ms": 10736.3,
+     "prompt_tokens": 13552,
+     "completion_tokens": 234,
+     "thinking_tokens": 4006
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_recall",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.1667
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.3333
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 10736.3,
+   "prompt_tokens": 13552,
+   "completion_tokens": 234,
+   "thinking_tokens": 4006,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 0.16666666666666666,
+    "citation_valid_rate": 0.3333333333333333
+   },
+   "judge_errors": {},
+   "warnings": [
+    "citation_unverified:/data/workspace/mcp/evals/datasets/fixtures/orders.py:41 (quote_not_found, found at line 37)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py:167 (quote_not_found, found at line 149)"
+   ],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":41,\"severity\":\"high\",\"claim\":\"SQL injection vulnerability via direct string interpolation of the customer parameter.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":20,\"severity\":\"medium\",\"claim\":\"Use of a mutable default argument for the cart parameter.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py\",\"line\":167,\"severity\":\"high\",\"claim\":\"Accessing resp.next_request when follow_redirects is False returns None, preventing redirect handling.\",\"evidence_quote\":\"target = str(resp.next_request.url) if resp.next_request else \\\"\\\"\"}]}"
+  }
+ ]
+}

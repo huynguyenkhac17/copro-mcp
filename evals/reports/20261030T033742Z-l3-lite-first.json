@@ -1,0 +1,280 @@
+{
+ "generated_at": "20261030T033742Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "routed"
+  ],
+  "arm_models": {
+   "routed": "openai/gpt-oss-120b"
+  },
+  "cases": 5,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "l3-lite-first"
+ },
+ "summary": {
+  "routed": {
+   "overall": {
+    "cases": 5,
+    "success": 1.0,
+    "success_n": 5,
+    "bug_recall": 0.8667,
+    "bug_recall_n": 5,
+    "citation_valid_rate": 0.9,
+    "citation_valid_rate_n": 5,
+    "json_valid": 1.0,
+    "json_valid_n": 1,
+    "json_schema_valid": 1.0,
+    "json_schema_valid_n": 1,
+    "fallback": 0.2,
+    "fallback_n": 5,
+    "truncated": 0.0,
+    "truncated_n": 5,
+    "latency_p50_ms": 1498.1,
+    "latency_p95_ms": 3559.66,
+    "prompt_tokens": 17632,
+    "completion_tokens": 3910,
+    "thinking_tokens": 0
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 5,
+     "success": 1.0,
+     "success_n": 5,
+     "bug_recall": 0.8667,
+     "bug_recall_n": 5,
+     "citation_valid_rate": 0.9,
+     "citation_valid_rate_n": 5,
+     "json_valid": 1.0,
+     "json_valid_n": 1,
+     "json_schema_valid": 1.0,
+     "json_schema_valid_n": 1,
+     "fallback": 0.2,
+     "fallback_n": 5,
+     "truncated": 0.0,
+     "truncated_n": 5,
+     "latency_p50_ms": 1498.1,
+     "latency_p95_ms": 3559.66,
+     "prompt_tokens": 17632,
+     "completion_tokens": 3910,
+     "thinking_tokens": 0
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_recall",
+   "provider": "routed",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.8333
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "routed",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.75
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.9375
+  },
+  {
+   "metric": "fallback",
+   "provider": "routed",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.25
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "routed",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "routed",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-orders-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 2598.7,
+   "prompt_tokens": 1057,
+   "completion_tokens": 1098,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 0.75
+   },
+   "judge_errors": {},
+   "warnings": [
+    "citation_unverified:/data/workspace/mcp/evals/datasets/fixture/orders.py:37 (file_not_in_context)"
+   ],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":17,\"severity\":\"medium\",\"claim\":\"Uses a mutable default argument for 'cart', causing shared state across calls.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":26,\"severity\":\"low\",\"claim\":\"Divides by zero when order has no items, raising a ZeroDivisionError.\",\"evidence_quote\":\"return total / len(order.items)\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":31,\"severity\":\"medium\",\"claim\":\"Calculates start index incorrectly for 1‑based paging, causing off‑by‑one results.\",\"evidence_quote\":\"start = page * page_size\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixture/orders.py\",\"line\":37,\"severity\":\"high\",\"claim\":\"Builds SQL query via string interpolation, exposing a SQL injection vulnerability.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-orders-l2",
+   "task_type": "review",
+   "budget": "L2",
+   "arm": "routed",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 991.9,
+   "prompt_tokens": 993,
+   "completion_tokens": 349,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 0.75
+   },
+   "judge_errors": {},
+   "warnings": [
+    "citation_unverified:/data/workspace/mcp/evals/datasets/fixture/orders.py:36 (file_not_in_context)"
+   ],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":20,\"severity\":\"high\",\"claim\":\"Mutable default argument 'cart' can retain state across calls leading to unexpected behavior.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":27,\"severity\":\"medium\",\"claim\":\"Division by zero occurs when average_item_price is called on an order with no items.\",\"evidence_quote\":\"return total / len(order.items)\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":31,\"severity\":\"medium\",\"claim\":\"Pagination calculation is off by one; for 1‑based page numbers the start index should be (page-1)*page_size.\",\"evidence_quote\":\"start = page * page_size\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixture/orders.py\",\"line\":36,\"severity\":\"high\",\"claim\":\"SQL query concatenates user input directly, causing SQL injection vulnerability.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-orders-json",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 3799.9,
+   "prompt_tokens": 1048,
+   "completion_tokens": 1678,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":17,\"severity\":\"medium\",\"claim\":\"Uses a mutable default argument for `cart`, causing shared state across calls.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":26,\"severity\":\"medium\",\"claim\":\"Division by zero possible when `order.items` is empty, raising ZeroDivisionError.\",\"evidence_quote\":\"return total / len(order.items)\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":31,\"severity\":\"medium\",\"claim\":\"Off‑by‑one pagination error: `start` should be `(page-1)*page_size` for 1‑based pages.\",\"evidence_quote\":\"start = page * page_size\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\"line\":37,\"severity\":\"high\",\"claim\":\"SQL injection vulnerability due to string‑interpolated query.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-ratelimiter-js",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 1498.1,
+   "prompt_tokens": 982,
+   "completion_tokens": 615,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\"line\":21,\"severity\":\"high\",\"claim\":\"Refill logic can increase tokens beyond the configured capacity, allowing unlimited requests after idle periods.\",\"evidence_quote\":\"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\"},{\"file\":\"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\"line\":28,\"severity\":\"medium\",\"claim\":\"Allowance check uses '>' instead of '>=' so a request costing exactly the remaining tokens is incorrectly denied.\",\"evidence_quote\":\"if (bucket.tokens > cost) {\"}]}"
+  },
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 1298.1,
+   "prompt_tokens": 13552,
+   "completion_tokens": 170,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 1.0,
+    "truncated": 0.0,
+    "bug_recall": 0.3333333333333333,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [
+    "fallback_used:gemini-lite after groq: groq: prompt ~12831 tokens exceeds max_prompt_tokens=6000; skipped"
+   ],
+   "error": null,
+   "answer": "{\"findings\": [{\"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\", \"line\": 20, \"severity\": \"medium\", \"claim\": \"Using a mutable default argument (`cart=[]`) leads to shared state across function calls.\", \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"}, {\"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\", \"line\": 39, \"severity\": \"high\", \"claim\": \"SQL injection vulnerability via unescaped string formatting in the query.\", \"evidence_quote\": \"    cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  }
+ ]
+}

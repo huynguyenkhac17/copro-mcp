@@ -101,10 +101,13 @@ budget_providers:
   L3: groq
 
 # Chain for a budget's own provider (overrides `fallbacks` for budget-routed requests).
-# L3 tries flash before lite: flash found 4/4 seeded bugs vs lite's 3/4, and the
-# tier cap below bounds how long an overloaded flash can stall the request.
+# L3 tries lite before flash (changed 2026-10-30). The 2026-10-07 test had flash
+# ahead (4/4 seeded bugs vs lite's 3/4), but since then flash has rarely answered:
+# 27/28 L3 jobs on 2026-10-24 timed out on it, and worker-eval on 2026-10-30 got
+# 1/9 answers (92s, the rest 429/timeout) while lite answered 9/9 with full bug
+# recall. Flash stays as the last tier, for when lite itself is down.
 budget_fallbacks:
-  L3: [gemini, gemini-lite]
+  L3: [gemini-lite, gemini]
 
 fallbacks:
   gemini: [gemini-lite, groq]

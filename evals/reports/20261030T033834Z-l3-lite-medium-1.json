@@ -1,0 +1,123 @@
+{
+ "generated_at": "20261030T033834Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "gemini-lite"
+  ],
+  "arm_models": {
+   "gemini-lite": "gemini-flash-lite-latest"
+  },
+  "cases": 1,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "l3-lite-medium-1"
+ },
+ "summary": {
+  "gemini-lite": {
+   "overall": {
+    "cases": 1,
+    "success": 1.0,
+    "success_n": 1,
+    "bug_recall": 0.5,
+    "bug_recall_n": 1,
+    "citation_valid_rate": 1.0,
+    "citation_valid_rate_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 1,
+    "truncated": 0.0,
+    "truncated_n": 1,
+    "latency_p50_ms": 10227.0,
+    "latency_p95_ms": 10227.0,
+    "prompt_tokens": 13552,
+    "completion_tokens": 295,
+    "thinking_tokens": 3784
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 1,
+     "success": 1.0,
+     "success_n": 1,
+     "bug_recall": 0.5,
+     "bug_recall_n": 1,
+     "citation_valid_rate": 1.0,
+     "citation_valid_rate_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 1,
+     "truncated": 0.0,
+     "truncated_n": 1,
+     "latency_p50_ms": 10227.0,
+     "latency_p95_ms": 10227.0,
+     "prompt_tokens": 13552,
+     "completion_tokens": 295,
+     "thinking_tokens": 3784
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_recall",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.5
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 10227.0,
+   "prompt_tokens": 13552,
+   "completion_tokens": 295,
+   "thinking_tokens": 3784,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 0.5,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 20,\n      \"severity\": \"medium\",\n      \"claim\": \"Using a mutable list as a default function argument shares state across calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 20,\n      \"severity\": \"medium\",\n      \"claim\": \"Token refill calculation fails to cap accumulated tokens at the bucket capacity.\",\n      \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 27,\n      \"severity\": \"medium\",\n      \"claim\": \"Checking strict inequality prevents token consumption when tokens exactly equal the cost.\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\"\n    }\n  ]\n}"
+  }
+ ]
+}

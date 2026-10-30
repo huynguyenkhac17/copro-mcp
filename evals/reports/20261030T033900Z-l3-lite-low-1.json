@@ -1,0 +1,125 @@
+{
+ "generated_at": "20261030T033900Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "routed"
+  ],
+  "arm_models": {
+   "routed": "gemini-flash-lite-latest"
+  },
+  "cases": 1,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "l3-lite-low-1"
+ },
+ "summary": {
+  "routed": {
+   "overall": {
+    "cases": 1,
+    "success": 1.0,
+    "success_n": 1,
+    "bug_recall": 0.1667,
+    "bug_recall_n": 1,
+    "citation_valid_rate": 1.0,
+    "citation_valid_rate_n": 1,
+    "fallback": 1.0,
+    "fallback_n": 1,
+    "truncated": 0.0,
+    "truncated_n": 1,
+    "latency_p50_ms": 1024.6,
+    "latency_p95_ms": 1024.6,
+    "prompt_tokens": 13552,
+    "completion_tokens": 115,
+    "thinking_tokens": 0
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 1,
+     "success": 1.0,
+     "success_n": 1,
+     "bug_recall": 0.1667,
+     "bug_recall_n": 1,
+     "citation_valid_rate": 1.0,
+     "citation_valid_rate_n": 1,
+     "fallback": 1.0,
+     "fallback_n": 1,
+     "truncated": 0.0,
+     "truncated_n": 1,
+     "latency_p50_ms": 1024.6,
+     "latency_p95_ms": 1024.6,
+     "prompt_tokens": 13552,
+     "completion_tokens": 115,
+     "thinking_tokens": 0
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_recall",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.1667
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 1024.6,
+   "prompt_tokens": 13552,
+   "completion_tokens": 115,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 1.0,
+    "truncated": 0.0,
+    "bug_recall": 0.16666666666666666,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [
+    "fallback_used:gemini-lite after groq: groq: prompt ~12831 tokens exceeds max_prompt_tokens=6000; skipped"
+   ],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default argument `cart` can lead to shared state across function calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    }\n  ]\n}"
+  }
+ ]
+}

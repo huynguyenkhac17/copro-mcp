@@ -1,0 +1,123 @@
+{
+ "generated_at": "20261030T033858Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "gemini-lite"
+  ],
+  "arm_models": {
+   "gemini-lite": "gemini-flash-lite-latest"
+  },
+  "cases": 1,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "l3-lite-medium-3"
+ },
+ "summary": {
+  "gemini-lite": {
+   "overall": {
+    "cases": 1,
+    "success": 1.0,
+    "success_n": 1,
+    "bug_recall": 0.5,
+    "bug_recall_n": 1,
+    "citation_valid_rate": 1.0,
+    "citation_valid_rate_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 1,
+    "truncated": 0.0,
+    "truncated_n": 1,
+    "latency_p50_ms": 12452.7,
+    "latency_p95_ms": 12452.7,
+    "prompt_tokens": 13552,
+    "completion_tokens": 295,
+    "thinking_tokens": 4983
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 1,
+     "success": 1.0,
+     "success_n": 1,
+     "bug_recall": 0.5,
+     "bug_recall_n": 1,
+     "citation_valid_rate": 1.0,
+     "citation_valid_rate_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 1,
+     "truncated": 0.0,
+     "truncated_n": 1,
+     "latency_p50_ms": 12452.7,
+     "latency_p95_ms": 12452.7,
+     "prompt_tokens": 13552,
+     "completion_tokens": 295,
+     "thinking_tokens": 4983
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_recall",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.5
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 12452.7,
+   "prompt_tokens": 13552,
+   "completion_tokens": 295,
+   "thinking_tokens": 4983,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 0.5,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Using a mutable default argument for cart creates shared state across function calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 26,\n      \"severity\": \"medium\",\n      \"claim\": \"Calculating the average item price will raise a ZeroDivisionError if the order has no items.\",\n      \"evidence_quote\": \"return total / len(order.items)\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 28,\n      \"severity\": \"medium\",\n      \"claim\": \"Using strict inequality '>' instead of '>=' prevents requests equal to the remaining token cost from being allowed.\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\"\n    }\n  ]\n}"
+  }
+ ]
+}
