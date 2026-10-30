@@ -74,7 +74,11 @@ class DelegateTaskUseCase:
         """None = no redaction and no output scan (guardrails.redact_secrets: false)."""
         self._local_providers = frozenset(local_providers or ())
 
-    async def execute(self, request: DelegateTaskRequest) -> DelegateTaskResult:
+    async def execute(
+        self, request: DelegateTaskRequest, *, allow_fallback: bool = True
+    ) -> DelegateTaskResult:
+        """`allow_fallback=False` pins the call to its provider (cross-check arms: an
+        arm answered by another tier would no longer be an independent opinion)."""
         request, task_profile = self.apply_task_profile(request)
         profile = self.resolve_budget(request.budget)
 
@@ -85,7 +89,7 @@ class DelegateTaskUseCase:
             raise ConfigurationError(
                 f"Provider '{provider_name}' does not exist. Available providers: {available}"
             )
-        chain = self._fallback_chain(provider_name, request)
+        chain = self._fallback_chain(provider_name, request) if allow_fallback else [provider_name]
 
         combined_context, file_warnings = await self.resolve_context(request)
         task, combined_context, redaction_warnings = self._guard_input(
@@ -429,6 +433,11 @@ class DelegateTaskUseCase:
     @property
     def url_fetcher(self) -> UrlContextFetcher | None:
         return self._url_fetcher
+
+    def prompt_limit(self, provider_name: str) -> int | None:
+        """The provider's `max_prompt_tokens` (None = no per-request cap)."""
+        instance = self._config.providers.get(provider_name)
+        return instance.max_prompt_tokens if instance else None
 
     def available_task_types(self) -> dict[str, TaskProfile]:
         return dict(self._task_profiles)

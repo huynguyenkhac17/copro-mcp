@@ -89,6 +89,21 @@ def score_case(case: EvalCase, result: DelegateTaskResult, context: str | None) 
             for f in case.expected_findings
         )
         scores["bug_recall"] = found / len(case.expected_findings)
+        if citations:
+            # Recall alone rewards reporting everything; a cross-check that merges two
+            # providers' findings must not buy its recall with noise.
+            hits = sum(
+                any(
+                    _same_file(c.file, f.file) and abs(c.line - f.line) <= FINDING_LINE_TOLERANCE
+                    for f in case.expected_findings
+                )
+                for c in citations
+            )
+            scores["bug_precision"] = hits / len(citations)
+
+    cross = result.cross_check or {}
+    if cross.get("findings_total"):
+        scores["agreement_rate"] = cross["findings_agreed"] / cross["findings_total"]
 
     files = split_context_files(context)
     if citations and files:

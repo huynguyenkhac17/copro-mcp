@@ -67,3 +67,15 @@ def test_eval_latest_merges_subset_runs(tmp_path):
     update_eval_latest(path, {"generated_at": "b", "meta": meta, "scores": [{**base, "value": 1.0}]})
     scores = {s["task_type"]: s["value"] for s in json.loads(path.read_text())["scores"]}
     assert scores == {"review": 1.0, "summarize": 0.9}
+
+
+def test_bug_precision_and_agreement_rate():
+    case = EvalCase(id="r", task="t", task_type="review",
+                    expected_findings=[{"file": "orders.py", "line": 17}])
+    content = {"findings": [{"file": "orders.py", "line": 18}, {"file": "orders.py", "line": 30}]}
+    result = _result("x", content=content)
+    result.cross_check = {"findings_total": 2, "findings_agreed": 1}
+    scores = score_case(case, result, CONTEXT)
+    assert scores["bug_recall"] == 1.0
+    assert scores["bug_precision"] == 0.5  # line 30 matches no seeded bug
+    assert scores["agreement_rate"] == 0.5

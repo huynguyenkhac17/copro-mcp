@@ -34,10 +34,14 @@ from llm_worker_pool.infra.event_log import configured_path, default_eval_latest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ROUTED_ARM = "routed"
+XCHECK_ARM = "xcheck"
+"""Real routing through the cross-check orchestrator (needs --harness on: it is the
+task profile that turns cross-checking on and names the providers)."""
+_SPECIAL_ARMS = (ROUTED_ARM, XCHECK_ARM)
 
 SUMMARY_METRICS = (
     "success", "faithfulness", "factual_correctness", "answer_relevancy", "context_precision",
-    "context_recall", "bug_recall", "citation_valid_rate", "json_valid", "json_schema_valid",
+    "context_recall", "bug_recall", "bug_precision", "agreement_rate", "citation_valid_rate", "json_valid", "json_schema_valid",
     "field_accuracy", "must_contain", "no_leak", "secret_guarded", "file_denied", "fallback", "truncated",
 )
 
@@ -50,7 +54,7 @@ def _arm_config(arm: str) -> AppConfig:
     if str(REPO_ROOT) not in roots:
         roots.append(str(REPO_ROOT))
     config.file_access.allowed_roots = roots
-    if arm != ROUTED_ARM:
+    if arm not in _SPECIAL_ARMS:
         config.fallbacks = {}
         config.budget_fallbacks = {}
     return config
@@ -68,7 +72,7 @@ def _build_use_case(config: AppConfig):
 def _request(case: EvalCase, arm: str, harness: bool) -> DelegateTaskRequest:
     fields: dict[str, Any] = {
         "task": case.task,
-        "provider": None if arm == ROUTED_ARM else arm,
+        "provider": None if arm in _SPECIAL_ARMS else arm,
         "context": case.context,
         "file_paths": [str(REPO_ROOT / p) for p in case.file_paths] if case.file_paths else None,
         "json_schema": case.json_schema,
@@ -106,10 +110,17 @@ def _is_rag(case: EvalCase) -> bool:
 async def _run_case(use_case, judge, case: EvalCase, arm: str, harness: bool, sem: asyncio.Semaphore) -> dict[str, Any]:
     async with sem:
         request = _request(case, arm, harness)
+        execute = use_case.execute
+        if arm == XCHECK_ARM:
+            from llm_worker_pool.application.cross_check_orchestrator import CrossCheckOrchestrator
+
+            orchestrator = CrossCheckOrchestrator(use_case)
+            if orchestrator.wants_cross_check(request):
+                execute = orchestrator.execute
         started = time.monotonic()
         context = await _resolve_context(use_case, request)
         try:
-            result = await use_case.execute(request)
+            result = await execute(request)
         except Exception as exc:  # noqa: BLE001 - a broken case must not end the run
             result = DelegateTaskResult(success=False, error=f"{type(exc).__name__}: {exc}")
         wall_ms = (time.monotonic() - started) * 1000
@@ -278,7 +289,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
     try:
         for arm in args.arm:
             use_case = _build_use_case(_arm_config(arm))
-            if arm != ROUTED_ARM and arm not in use_case.available_providers():
+            if arm not in _SPECIAL_ARMS and arm not in use_case.available_providers():
                 print(f"skipping arm {arm!r}: provider not available", file=sys.stderr)
                 continue
             print(f"arm {arm}: {len(cases)} cases", file=sys.stderr)
@@ -343,7 +354,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--dataset", action="append", default=None,
                         help="JSONL file or directory (default: evals/datasets)")
     parser.add_argument("--arm", action="append", default=[],
-                        help=f"provider to force (repeatable), or '{ROUTED_ARM}' for real routing")
+                        help=f"provider to force (repeatable), '{ROUTED_ARM}' for real routing, "
+                        f"or '{XCHECK_ARM}' for routing through cross-check (with --harness on)")
     parser.add_argument("--harness", choices=("off", "on"), default="off")
     parser.add_argument("--no-judge", dest="judge", action="store_false", help="deterministic metrics only")
     parser.add_argument("--judge-provider", default=None, help="override eval.judge_provider")

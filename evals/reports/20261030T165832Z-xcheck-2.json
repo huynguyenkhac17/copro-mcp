@@ -1,0 +1,872 @@
+{
+ "generated_at": "20261030T165832Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "groq",
+   "gemini-lite",
+   "xcheck"
+  ],
+  "arm_models": {
+   "groq": "openai/gpt-oss-120b",
+   "gemini-lite": "gemini-flash-lite-latest",
+   "xcheck": "openai/gpt-oss-120b+gemini-flash-lite-latest"
+  },
+  "cases": 5,
+  "dataset": [
+   "D:\\project\\mcp\\evals\\datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "xcheck-2"
+ },
+ "summary": {
+  "groq": {
+   "overall": {
+    "cases": 5,
+    "success": 0.8,
+    "success_n": 5,
+    "bug_recall": 0.8,
+    "bug_recall_n": 5,
+    "bug_precision": 1.0,
+    "bug_precision_n": 4,
+    "citation_valid_rate": 1.0,
+    "citation_valid_rate_n": 4,
+    "json_valid": 1.0,
+    "json_valid_n": 1,
+    "json_schema_valid": 1.0,
+    "json_schema_valid_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 5,
+    "truncated": 0.0,
+    "truncated_n": 5,
+    "latency_p50_ms": 2433.3500000000004,
+    "latency_p95_ms": 2767.4900000000002,
+    "prompt_tokens": 4087,
+    "completion_tokens": 3556,
+    "thinking_tokens": 0
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 5,
+     "success": 0.8,
+     "success_n": 5,
+     "bug_recall": 0.8,
+     "bug_recall_n": 5,
+     "bug_precision": 1.0,
+     "bug_precision_n": 4,
+     "citation_valid_rate": 1.0,
+     "citation_valid_rate_n": 4,
+     "json_valid": 1.0,
+     "json_valid_n": 1,
+     "json_schema_valid": 1.0,
+     "json_schema_valid_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 5,
+     "truncated": 0.0,
+     "truncated_n": 5,
+     "latency_p50_ms": 2433.3500000000004,
+     "latency_p95_ms": 2767.4900000000002,
+     "prompt_tokens": 4087,
+     "completion_tokens": 3556,
+     "thinking_tokens": 0
+    }
+   }
+  },
+  "gemini-lite": {
+   "overall": {
+    "cases": 5,
+    "success": 1.0,
+    "success_n": 5,
+    "bug_recall": 0.9,
+    "bug_recall_n": 5,
+    "bug_precision": 0.95,
+    "bug_precision_n": 5,
+    "citation_valid_rate": 0.95,
+    "citation_valid_rate_n": 5,
+    "json_valid": 1.0,
+    "json_valid_n": 1,
+    "json_schema_valid": 1.0,
+    "json_schema_valid_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 5,
+    "truncated": 0.0,
+    "truncated_n": 5,
+    "latency_p50_ms": 28322.4,
+    "latency_p95_ms": 46496.939999999995,
+    "prompt_tokens": 17421,
+    "completion_tokens": 1673,
+    "thinking_tokens": 6044
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 5,
+     "success": 1.0,
+     "success_n": 5,
+     "bug_recall": 0.9,
+     "bug_recall_n": 5,
+     "bug_precision": 0.95,
+     "bug_precision_n": 5,
+     "citation_valid_rate": 0.95,
+     "citation_valid_rate_n": 5,
+     "json_valid": 1.0,
+     "json_valid_n": 1,
+     "json_schema_valid": 1.0,
+     "json_schema_valid_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 5,
+     "truncated": 0.0,
+     "truncated_n": 5,
+     "latency_p50_ms": 28322.4,
+     "latency_p95_ms": 46496.939999999995,
+     "prompt_tokens": 17421,
+     "completion_tokens": 1673,
+     "thinking_tokens": 6044
+    }
+   }
+  },
+  "xcheck": {
+   "overall": {
+    "cases": 5,
+    "success": 1.0,
+    "success_n": 5,
+    "bug_recall": 1.0,
+    "bug_recall_n": 5,
+    "bug_precision": 0.95,
+    "bug_precision_n": 5,
+    "agreement_rate": 0.875,
+    "agreement_rate_n": 5,
+    "citation_valid_rate": 0.95,
+    "citation_valid_rate_n": 5,
+    "json_valid": 1.0,
+    "json_valid_n": 1,
+    "json_schema_valid": 1.0,
+    "json_schema_valid_n": 1,
+    "fallback": 0.0,
+    "fallback_n": 5,
+    "truncated": 0.0,
+    "truncated_n": 5,
+    "latency_p50_ms": 32299.6,
+    "latency_p95_ms": 49653.88,
+    "prompt_tokens": 29448,
+    "completion_tokens": 16171,
+    "thinking_tokens": 7762
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 5,
+     "success": 1.0,
+     "success_n": 5,
+     "bug_recall": 1.0,
+     "bug_recall_n": 5,
+     "bug_precision": 0.95,
+     "bug_precision_n": 5,
+     "agreement_rate": 0.875,
+     "agreement_rate_n": 5,
+     "citation_valid_rate": 0.95,
+     "citation_valid_rate_n": 5,
+     "json_valid": 1.0,
+     "json_valid_n": 1,
+     "json_schema_valid": 1.0,
+     "json_schema_valid_n": 1,
+     "fallback": 0.0,
+     "fallback_n": 5,
+     "truncated": 0.0,
+     "truncated_n": 5,
+     "latency_p50_ms": 32299.6,
+     "latency_p95_ms": 49653.88,
+     "prompt_tokens": 29448,
+     "completion_tokens": 16171,
+     "thinking_tokens": 7762
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "agreement_rate",
+   "provider": "xcheck",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "agreement_rate",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.8438
+  },
+  {
+   "metric": "bug_precision",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_precision",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.9375
+  },
+  {
+   "metric": "bug_precision",
+   "provider": "groq",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_precision",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_precision",
+   "provider": "xcheck",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_precision",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.9375
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.875
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "groq",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.75
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "xcheck",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.9375
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "groq",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "xcheck",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.9375
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "groq",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "xcheck",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "fallback",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "json_schema_valid",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "json_valid",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "groq",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.75
+  },
+  {
+   "metric": "success",
+   "provider": "xcheck",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "success",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "gemini-lite",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "groq",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "groq",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "xcheck",
+   "budget": "L2",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "xcheck",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-orders-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "groq",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 2783.3,
+   "prompt_tokens": 1059,
+   "completion_tokens": 1048,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":17,\"severity\":\"medium\",\"claim\":\"Mutable default argument 'cart' shares state across calls, causing unexpected accumulation of items.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":25,\"severity\":\"medium\",\"claim\":\"Division by zero occurs when order has no items, raising ZeroDivisionError.\",\"evidence_quote\":\"return total / len(order.items)\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":29,\"severity\":\"medium\",\"claim\":\"Pagination uses 0-based start for a 1-based page, causing off‑by‑one errors.\",\"evidence_quote\":\"start = page * page_size\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":34,\"severity\":\"high\",\"claim\":\"SQL query interpolates user input directly, making it vulnerable to injection attacks.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-orders-l2",
+   "task_type": "review",
+   "budget": "L2",
+   "arm": "groq",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 2188.8,
+   "prompt_tokens": 995,
+   "completion_tokens": 749,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":17,\"severity\":\"medium\",\"claim\":\"Uses a mutable default argument for cart, causing shared state across calls.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":25,\"severity\":\"high\",\"claim\":\"Division by zero when order has no items.\",\"evidence_quote\":\"return total / len(order.items)\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":29,\"severity\":\"medium\",\"claim\":\"Pagination start index is off by one for 1‑based pages.\",\"evidence_quote\":\"start = page * page_size\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":34,\"severity\":\"high\",\"claim\":\"SQL query concatenates user input, leading to SQL injection vulnerability.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-orders-json",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "groq",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 2677.9,
+   "prompt_tokens": 1050,
+   "completion_tokens": 1004,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":17,\"severity\":\"medium\",\"claim\":\"Mutable default argument 'cart' can lead to unexpected shared state across calls.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":26,\"severity\":\"low\",\"claim\":\"Division by zero occurs when order.items is empty.\",\"evidence_quote\":\"return total / len(order.items)\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":31,\"severity\":\"medium\",\"claim\":\"Pagination uses 1-based page but calculation treats it as 0-based, causing off‑by‑one results.\",\"evidence_quote\":\"start = page * page_size\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":37,\"severity\":\"high\",\"claim\":\"SQL query interpolates user input directly, exposing SQL injection vulnerability.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"}]}"
+  },
+  {
+   "id": "review-ratelimiter-js",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "groq",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 1970.5,
+   "prompt_tokens": 983,
+   "completion_tokens": 755,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\",\"line\":28,\"severity\":\"medium\",\"claim\":\"Allows requests only when tokens are greater than cost, rejecting when tokens equal cost (off‑by‑one).\",\"evidence_quote\":\"if (bucket.tokens > cost) {\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\",\"line\":21,\"severity\":\"high\",\"claim\":\"Refill logic can increase bucket.tokens beyond the configured capacity, breaking the rate‑limiting guarantee.\",\"evidence_quote\":\"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\"}]}"
+  },
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "groq",
+   "provider": "groq",
+   "model": "openai/gpt-oss-120b",
+   "latency_ms": 0.3,
+   "prompt_tokens": null,
+   "completion_tokens": null,
+   "thinking_tokens": null,
+   "scores": {
+    "success": 0.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 0.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": "groq: prompt ~13129 tokens exceeds max_prompt_tokens=6000; skipped",
+   "answer": ""
+  },
+  {
+   "id": "review-orders-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 25480.1,
+   "prompt_tokens": 920,
+   "completion_tokens": 388,
+   "thinking_tokens": 1534,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 16,\n      \"severity\": \"medium\",\n      \"claim\": \"Using a mutable list as a default argument leads to shared state across function calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 25,\n      \"severity\": \"medium\",\n      \"claim\": \"Division by zero occurs if the order items list is empty when calculating the average price.\",\n      \"evidence_quote\": \"return total / len(order.items)\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 30,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination uses 0-based math despite docstring stating 1-based page indexing, causing incorrect slicing.\",\n      \"evidence_quote\": \"start = page * page_size\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 36,\n      \"severity\": \"high\",\n      \"claim\": \"SQL injection vulnerability due to direct string formatting of user input into the query.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-orders-l2",
+   "task_type": "review",
+   "budget": "L2",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 27793.1,
+   "prompt_tokens": 904,
+   "completion_tokens": 403,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 16,\n      \"severity\": \"high\",\n      \"claim\": \"Mutable default argument `cart` used in function definition, which persists across function calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 24,\n      \"severity\": \"high\",\n      \"claim\": \"ZeroDivisionError will occur if average_item_price is called on an order with an empty items list.\",\n      \"evidence_quote\": \"    return total / len(order.items)\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 30,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination uses 1-based page indexing but calculates start as page * page_size, causing page 1 to skip the first page_size elements.\",\n      \"evidence_quote\": \"    start = page * page_size\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 36,\n      \"severity\": \"high\",\n      \"claim\": \"SQL injection vulnerability via direct string formatting in the SQL query.\",\n      \"evidence_quote\": \"    cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-orders-json",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 47925.6,
+   "prompt_tokens": 915,
+   "completion_tokens": 409,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 16,\n      \"severity\": \"high\",\n      \"claim\": \"Using a mutable default argument `cart: list[float] = []` introduces a shared state bug across function calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 24,\n      \"severity\": \"medium\",\n      \"claim\": \"Division by zero will occur if `order.items` is empty when calculating `average_item_price`.\",\n      \"evidence_quote\": \"return total / len(order.items)\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 29,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination logic uses `page * page_size` for 1-based indexing instead of `(page - 1) * page_size`, causing incorrect slicing.\",\n      \"evidence_quote\": \"start = page * page_size\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 35,\n      \"severity\": \"high\",\n      \"claim\": \"SQL injection vulnerability via string formatting in database query.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-ratelimiter-js",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 28322.4,
+   "prompt_tokens": 837,
+   "completion_tokens": 174,
+   "thinking_tokens": 976,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\"findings\": [{\"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\", \"line\": 29, \"severity\": \"medium\", \"claim\": \"Using strict greater-than instead of greater-than-or-equal prevents allowing a request whose cost equals the exact available tokens.\", \"evidence_quote\": \"if (bucket.tokens > cost) {\"}, {\"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\", \"line\": 20, \"severity\": \"medium\", \"claim\": \"Refilled tokens are not capped at the bucket capacity, allowing token accumulation beyond the maximum capacity limit.\", \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\"}]}"
+  },
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "gemini-lite",
+   "provider": "gemini-lite",
+   "model": "gemini-flash-lite-latest",
+   "latency_ms": 40782.3,
+   "prompt_tokens": 13845,
+   "completion_tokens": 299,
+   "thinking_tokens": 3534,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 0.5,
+    "bug_precision": 0.75,
+    "citation_valid_rate": 0.75
+   },
+   "judge_errors": {},
+   "warnings": [
+    "citation_unverified:D:\\project\\mcp\\src\\llm_worker_pool\\infra\\url_fetcher.py:189 (quote_not_found, found at line 149)"
+   ],
+   "error": null,
+   "answer": "{\"findings\":[{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":19,\"severity\":\"medium\",\"claim\":\"Mutable default argument `cart` shared across function calls.\",\"evidence_quote\":\"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\"line\":35,\"severity\":\"high\",\"claim\":\"SQL injection vulnerability via unparameterized string formatting.\",\"evidence_quote\":\"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\"},{\"file\":\"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\",\"line\":18,\"severity\":\"medium\",\"claim\":\"Tokens can exceed bucket capacity during refill because there is no Math.min cap.\",\"evidence_quote\":\"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\"},{\"file\":\"D:\\\\project\\\\mcp\\\\src\\\\llm_worker_pool\\\\infra\\\\url_fetcher.py\",\"line\":189,\"severity\":\"high\",\"claim\":\"Using next_request.url instead of the Location header prevents following HTTP redirects correctly.\",\"evidence_quote\":\"target = str(resp.next_request.url) if resp.next_request else \\\"\\\"\"}]}"
+  },
+  {
+   "id": "review-orders-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "xcheck",
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 52331.5,
+   "prompt_tokens": 1979,
+   "completion_tokens": 1367,
+   "thinking_tokens": 1719,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "agreement_rate": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 37,\n      \"severity\": \"high\",\n      \"claim\": \"SQL query constructed via f‑string with unsanitized input, vulnerable to injection.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default argument 'cart' leads to shared list across calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 26,\n      \"severity\": \"medium\",\n      \"claim\": \"Division by zero if order.items is empty.\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 31,\n      \"severity\": \"medium\",\n      \"claim\": \"Uses 0-based start index while page is documented as 1-based, causing off‑by‑one error.\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-orders-l2",
+   "task_type": "review",
+   "budget": "L2",
+   "arm": "xcheck",
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 27397.2,
+   "prompt_tokens": 1899,
+   "completion_tokens": 1139,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "agreement_rate": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 17,\n      \"severity\": \"high\",\n      \"claim\": \"Uses a mutable default argument for cart, causing shared state across calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 25,\n      \"severity\": \"high\",\n      \"claim\": \"Divides by len(order.items) without checking for zero, causing ZeroDivisionError on empty orders.\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 34,\n      \"severity\": \"high\",\n      \"claim\": \"Builds SQL query with f‑string interpolation, exposing to SQL injection.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 29,\n      \"severity\": \"medium\",\n      \"claim\": \"Calculates start index as page*page_size despite pages being 1‑based, skipping the first page.\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-orders-json",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "xcheck",
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 32299.6,
+   "prompt_tokens": 1965,
+   "completion_tokens": 1502,
+   "thinking_tokens": 2258,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "json_valid": 1.0,
+    "json_schema_valid": 1.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "agreement_rate": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 34,\n      \"severity\": \"high\",\n      \"claim\": \"SQL query concatenates user input directly, leading to SQL injection vulnerability.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Using a mutable default argument for `cart` causes shared state across calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 25,\n      \"severity\": \"medium\",\n      \"claim\": \"Division by zero occurs when `order.items` is empty.\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 29,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination calculation is off by one; `page` is 1-based but used as 0-based.\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-ratelimiter-js",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "xcheck",
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 31160.5,
+   "prompt_tokens": 1820,
+   "completion_tokens": 1064,
+   "thinking_tokens": 1273,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 1.0,
+    "agreement_rate": 1.0,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\",\n      \"line\": 21,\n      \"severity\": \"medium\",\n      \"claim\": \"The _refill method can increase bucket.tokens beyond the configured capacity, allowing token counts to grow unbounded.\",\n      \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\",\n      \"line\": 28,\n      \"severity\": \"medium\",\n      \"claim\": \"The allow method denies requests when tokens equal the cost because it uses a strict greater-than check instead of greater-or-equal.\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "xcheck",
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 38943.4,
+   "prompt_tokens": 21785,
+   "completion_tokens": 11099,
+   "thinking_tokens": 2512,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 0.75,
+    "agreement_rate": 0.375,
+    "citation_valid_rate": 0.75
+   },
+   "judge_errors": {},
+   "warnings": [
+    "cross_check_partial:groq 1 of 4 batches failed",
+    "citation_unverified:D:\\project\\mcp\\src\\llm_worker_pool\\infra\\url_fetcher.py:210 (quote_not_found)",
+    "citation_unverified:D:\\project\\mcp\\src\\llm_worker_pool\\domain\\file_context.py:16 (quote_not_found, found at line 25)"
+   ],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 26,\n      \"severity\": \"high\",\n      \"claim\": \"average_item_price divides by len(order.items) without checking for zero, causing ZeroDivisionError on empty orders\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 37,\n      \"severity\": \"high\",\n      \"claim\": \"find_orders_by_customer builds SQL with string interpolation, exposing SQL injection vulnerability\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"add_item uses a mutable default list for 'cart', causing shared state across calls\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\",\n        \"gemini-lite\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\orders.py\",\n      \"line\": 31,\n      \"severity\": \"medium\",\n      \"claim\": \"page_of_orders calculates start as page*page_size, but pages are 1‑based, skipping the first page\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\",\n      \"line\": 21,\n      \"severity\": \"medium\",\n      \"claim\": \"_refill can increase bucket.tokens beyond the configured capacity, allowing token overflow\",\n      \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\evals\\\\datasets\\\\fixtures\\\\rate_limiter.js\",\n      \"line\": 28,\n      \"severity\": \"low\",\n      \"claim\": \"allow uses '>' instead of '>=' so a request costing exactly the remaining tokens is incorrectly denied\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\src\\\\llm_worker_pool\\\\infra\\\\url_fetcher.py\",\n      \"line\": 210,\n      \"severity\": \"high\",\n      \"claim\": \"Undefined variable '_repo_max_file_bytes' causes NameError when processing repository files\",\n      \"evidence_quote\": \"if path.stat().st_size > _repo_max_file_bytes:\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\"\n    },\n    {\n      \"file\": \"D:\\\\project\\\\mcp\\\\src\\\\llm_worker_pool\\\\domain\\\\file_context.py\",\n      \"line\": 16,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default list in Pydantic model can be shared across instances, causing cross‑request warning leakage\",\n      \"evidence_quote\": \"    warnings: list[str] = []\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 25\n    }\n  ]\n}"
+  }
+ ]
+}

@@ -75,6 +75,12 @@ class TaskProfile(BaseModel):
     """Schema used when the request supplies none."""
     validators: list[str] = Field(default_factory=list)
     """Post-checks run on the answer: "json_repair", "citations"."""
+    cross_check: bool = False
+    """Run the task on several providers in parallel and merge their findings
+    (application/cross_check_orchestrator.py). Needs a JSON `findings` contract."""
+    cross_check_providers: list[str] = Field(default_factory=list)
+    """Providers for cross-checking, ideally from different vendors so their mistakes
+    differ. Unavailable ones are dropped; fewer than two left = a normal single call."""
 
 
 class ProviderResponse(BaseModel):

@@ -20,6 +20,7 @@ from llm_worker_pool import __version__
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.application.job_manager import JobManager
+from llm_worker_pool.application.cross_check_orchestrator import CrossCheckOrchestrator
 from llm_worker_pool.application.map_reduce_orchestrator import MapReduceOrchestrator
 from llm_worker_pool.config.settings import AppConfig, load_budget_profiles, load_task_profiles
 from llm_worker_pool.domain.chunker import Chunker
@@ -119,6 +120,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
     
     chunker = Chunker()
     map_reduce_orchestrator = MapReduceOrchestrator(use_case, chunker, file_context_resolver)
+    cross_check_orchestrator = CrossCheckOrchestrator(use_case)
     
     jobs_cache: InMemoryTTLCache[DelegateTaskResult] = InMemoryTTLCache(
         max_entries=config.jobs.max_entries,
@@ -189,6 +191,11 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "path:line the worker cites against the files it was given; drop findings whose "
             "status is not 'ok'). Explicit budget/output_format/json_schema override the "
             "task type's defaults; omit task_type for free-form tasks. "
+            "task_type='review' cross-checks by default: the review runs on two providers "
+            "of different vendors in parallel and their findings are merged - each finding "
+            "carries `agreed_by` (trust those reported by both most) and `citation` "
+            "(ok / quote_not_found / ...); see `cross_check` in the result. Pass "
+            "cross_check=false for a single, cheaper call. "
             "Files matching the secret deny-list (.env*, *.pem, *.key, ...) are never read, and "
             "secret-looking literals are redacted before any cloud call - see "
             "`guardrail_actions` in the result. "
@@ -211,6 +218,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
         async_mode: bool = False,
         map_reduce: bool = False,
         task_type: str | None = None,
+        cross_check: bool | None = None,
     ) -> DelegateTaskResult:
         try:
             fields: dict[str, Any] = {
@@ -221,6 +229,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                 "urls": urls,
                 "json_schema": json_schema,
                 "task_type": task_type,
+                "cross_check": cross_check,
             }
             # Only forward what the caller actually set, so a task type's own
             # default budget/output format can apply (DelegateTaskRequest tracks
@@ -243,6 +252,8 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
 
         if map_reduce:
             coro = map_reduce_orchestrator.execute(request)
+        elif cross_check_orchestrator.wants_cross_check(request):
+            coro = cross_check_orchestrator.execute(request)
         else:
             coro = use_case.execute(request)
 

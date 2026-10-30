@@ -44,6 +44,11 @@ task_types:
               claim: {type: string}
               evidence_quote: {type: string}
     validators: [json_repair, citations]
+    # Run on two vendors in parallel and merge findings (cross_check_orchestrator.py):
+    # groq finds more bugs but cites lines less precisely, gemini-lite the reverse
+    # (worker-eval harness-compare, 2026-10-30). Callers can pass cross_check=false.
+    cross_check: true
+    cross_check_providers: [groq, gemini-lite]
 
   summarize:
     description: Summary of files/text grounded strictly in the content.

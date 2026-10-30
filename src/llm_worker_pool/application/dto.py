@@ -33,6 +33,9 @@ class DelegateTaskRequest(BaseModel):
     budget/output format/schema and validators. None = no profile, i.e. exactly the
     behaviour from before profiles existed. A field the caller sets explicitly
     (budget, output_format, json_schema) always beats the profile's default."""
+    cross_check: bool | None = None
+    """Run on several providers and merge findings. None = the task profile decides
+    (review: on)."""
 
 
 class DelegateTaskResult(BaseModel):
@@ -68,3 +71,7 @@ class DelegateTaskResult(BaseModel):
     """Citation check (task types with the `citations` validator): every path:line the
     answer cites, with status ok / file_not_in_context / line_out_of_range /
     quote_not_found. Lets the caller drop invented findings without opening files."""
+
+    cross_check: dict[str, Any] | None = None
+    """Set when findings were merged from several providers: per-arm outcome, and how
+    many findings more than one provider reported (each finding carries agreed_by)."""
