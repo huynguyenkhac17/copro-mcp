@@ -28,6 +28,11 @@ class DelegateTaskRequest(BaseModel):
     (see infra/url_fetcher.py)."""
     output_format: OutputFormat = "text"
     json_schema: dict[str, Any] | None = None
+    task_type: str | None = None
+    """Kind of work (config/task_profiles.yaml): adds a system-prompt contract, default
+    budget/output format/schema and validators. None = no profile, i.e. exactly the
+    behaviour from before profiles existed. A field the caller sets explicitly
+    (budget, output_format, json_schema) always beats the profile's default."""
 
 
 class DelegateTaskResult(BaseModel):
@@ -54,3 +59,12 @@ class DelegateTaskResult(BaseModel):
     cached: bool = False
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
+    task_type: str | None = None
+    guardrail_actions: list[str] = Field(default_factory=list)
+    """What the guardrails did on this call: file_denied_sensitive:<path>,
+    secret_redacted:<kind> xN (input, before a cloud call), secret_in_response:<kind> xN."""
+
+    verification: dict[str, Any] | None = None
+    """Citation check (task types with the `citations` validator): every path:line the
+    answer cites, with status ok / file_not_in_context / line_out_of_range /
+    quote_not_found. Lets the caller drop invented findings without opening files."""

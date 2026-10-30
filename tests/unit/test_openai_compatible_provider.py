@@ -196,3 +196,22 @@ def test_each_provider_gets_its_own_circuit_breaker(monkeypatch):
 
     assert not flash_cb.is_available("k")
     assert lite_cb.is_available("k")  # flash overload must not lock the key for lite
+
+
+def test_strict_mode_only_for_strict_compatible_schemas():
+    # Regression: strict=True with a loose schema made Groq answer HTTP 400 for every
+    # json_schema request (found by worker-eval, 2026-10-30).
+    from llm_worker_pool.providers.openai_compatible_provider import _is_strict_compatible
+
+    loose = {"type": "object", "required": ["a"], "properties": {"a": {"type": "string"}}}
+    strict = {**loose, "additionalProperties": False}
+    nested_loose = {
+        "type": "object", "required": ["items"], "additionalProperties": False,
+        "properties": {"items": {"type": "array", "items": loose}},
+    }
+    partial_required = {**strict, "properties": {"a": {}, "b": {}}}
+
+    assert _is_strict_compatible(strict) is True
+    assert _is_strict_compatible(loose) is False
+    assert _is_strict_compatible(nested_loose) is False
+    assert _is_strict_compatible(partial_required) is False

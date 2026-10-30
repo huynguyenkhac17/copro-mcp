@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any
+from typing import Any, Callable
 
+from llm_worker_pool.infra.event_log import EventLog, error_code, warning_code
 from llm_worker_pool.infra.stats import StatsCollector
+
+EventSink = Callable[[dict[str, Any]], None]
+"""Optional extra destination for invocation events (hook for a future tracer such as
+a self-hosted Langfuse). Receives the same dict the event log gets."""
 
 _CONFIGURED = False
 
@@ -42,10 +47,14 @@ class InvocationLogger:
         logger: logging.Logger,
         debug_log_content: bool = False,
         stats_collector: StatsCollector | None = None,
+        event_log: EventLog | None = None,
+        sinks: list[EventSink] | None = None,
     ) -> None:
         self._logger = logger
         self._debug_log_content = debug_log_content
         self._stats_collector = stats_collector
+        self._event_log = event_log
+        self._sinks = list(sinks or [])
 
     def log_success(
         self,
@@ -63,6 +72,10 @@ class InvocationLogger:
         truncated: bool = False,
         task: str | None = None,
         raw_response: str | None = None,
+        task_type: str | None = None,
+        requested_provider: str | None = None,
+        fallback_chain: list[str] | None = None,
+        guardrail_actions: list[str] | None = None,
     ) -> None:
         if self._stats_collector:
             self._stats_collector.record_success(
@@ -92,6 +105,29 @@ class InvocationLogger:
         fields.update(self._content_fields(task, raw_response))
         self._logger.info(fields)
 
+        self._emit(
+            {
+                "outcome": "success",
+                "provider": provider,
+                "model": model,
+                "budget": budget,
+                "task_type": task_type,
+                "requested_provider": requested_provider or provider,
+                "latency_ms": round(latency_ms, 1),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "thinking_tokens": thinking_tokens,
+                "tokens_used": tokens_used,
+                "cached": cached,
+                "truncated": truncated,
+                "fallback_chain": fallback_chain or [provider],
+                "warning_codes": sorted({warning_code(w) for w in warnings}),
+                "guardrail_actions": [warning_code(a) for a in guardrail_actions or []],
+            },
+            task,
+            raw_response,
+        )
+
     def log_failure(
         self,
         *,
@@ -101,6 +137,7 @@ class InvocationLogger:
         latency_ms: float,
         error: str,
         task: str | None = None,
+        task_type: str | None = None,
     ) -> None:
         if self._stats_collector:
             self._stats_collector.record_failure(provider=provider, budget=budget)
@@ -116,6 +153,31 @@ class InvocationLogger:
         }
         fields.update(self._content_fields(task, None))
         self._logger.error(fields)
+
+        self._emit(
+            {
+                "outcome": "failure",
+                "provider": provider,
+                "model": model,
+                "budget": budget,
+                "task_type": task_type,
+                "latency_ms": round(latency_ms, 1),
+                "error_code": error_code(error),
+            },
+            task,
+            None,
+        )
+
+    def _emit(self, event: dict[str, Any], task: str | None, raw_response: str | None) -> None:
+        if self._debug_log_content:
+            event = {**event, "task": task, "raw_response": raw_response}
+        if self._event_log:
+            self._event_log.append(event)
+        for sink in self._sinks:
+            try:
+                sink(event)
+            except Exception as exc:  # noqa: BLE001 - a broken sink must not fail the call
+                self._logger.warning("event sink failed: %s", exc)
 
     def _content_fields(self, task: str | None, raw_response: str | None) -> dict[str, Any]:
         if self._debug_log_content:

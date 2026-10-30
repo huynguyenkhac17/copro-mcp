@@ -57,6 +57,26 @@ class BudgetProfile(BaseModel):
     """None = use default timeout_seconds from AppConfig."""
 
 
+class TaskProfile(BaseModel):
+    """A kind of work (review, summarize, extract...) - see config/task_profiles.yaml.
+    Adds an output contract on top of a budget; selected by `task_type` on a request."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    description: str = ""
+    system_addon: str = ""
+    """Appended to the budget's system prompt."""
+    default_budget: str | None = None
+    """Used when the request leaves budget at its default."""
+    output_format: OutputFormat | None = None
+    """Forced output format; None = whatever the request asks for."""
+    json_schema: dict[str, Any] | None = None
+    """Schema used when the request supplies none."""
+    validators: list[str] = Field(default_factory=list)
+    """Post-checks run on the answer: "json_repair", "citations"."""
+
+
 class ProviderResponse(BaseModel):
     """Raw result returned from an LLMProvider, before JSON parse/validation."""
 

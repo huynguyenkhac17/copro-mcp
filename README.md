@@ -13,7 +13,7 @@ The entire system exposes exactly **one MCP tool**: `delegate_task`. Claude does
 
 ```
 Claude Code (supervisor)
-      │ delegate_task(task, budget, context, output_format, json_schema)
+      │ delegate_task(task, budget, task_type, context, file_paths, urls, output_format, json_schema)
       ▼
 MCP layer        server.py — registers the tool, maps inputs/exceptions
       ▼
@@ -154,6 +154,28 @@ file_access:
 
 Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `DelegateTaskResult.warnings`.
 
+### Guardrails
+
+`allowed_roots` can be a whole drive, so two more checks sit on top of it (`guardrails` in `config/default.yaml`):
+
+- **Deny-list.** Files matching `.env*`, `*.pem`, `*.key`, `*id_rsa*`, `*id_ed25519*`, `credentials*.json` or `**/.git/**` are never read, even when a directory is listed or a symlink points at them. The warning is `file_denied_sensitive:<path>`. Use `extra_deny_globs` to add patterns, or `deny_globs` to replace the list.
+- **Secret redaction.** If **any** tier in the fallback chain is a cloud provider, secret-looking literals in the task and context are replaced with `[REDACTED:<kind>]` before the call (`secret_redacted:<kind> xN`). This covers `AIza…`, `gsk_…`, `sk-…`, `ghp_…`, PEM private keys, `password="…"`, `SECRET_TOKEN=…` and `user:pass@` in URLs. Nothing is redacted when the whole chain is local (ollama). Answers are scanned too, and a secret found there is flagged as `secret_in_response:<kind> xN`.
+- **Untrusted context.** File, URL and context text is wrapped in `<untrusted_context>…</untrusted_context>`, and a grounding rule tells the worker to treat it as data, not instructions. This guards against prompt injection hidden in a README or web page.
+
+`DelegateTaskResult.guardrail_actions` lists what was done on each call. These checks match patterns, so they catch the common cases but are not a guarantee. For genuinely confidential data, use `provider='ollama'`.
+
+### Task Types (`task_type`)
+
+`config/task_profiles.yaml` defines kinds of work: `review`, `summarize`, `extract`, `classify`, `explain`, `translate` and `generate`. Each profile can set:
+
+- `system_addon`: an output contract added to the system prompt.
+- `default_budget`, `output_format` and `json_schema`: used only when the caller does not set them.
+- `validators`:
+  - `json_repair`: if the JSON fails to parse or fails the schema, the same tier gets one more try with its own output and the errors (`json_repaired` on success).
+  - `citations`: every `path:line` or `{file, line, evidence_quote}` in the answer is checked against the files that were in the context. The results go to `result.verification` (`ok` / `file_not_in_context` / `line_out_of_range` / `quote_not_found`), and each failed one gets a `citation_unverified:<file>:<line>` warning.
+
+For example, `review` returns `findings: [{file, line, severity, claim, evidence_quote}]` at L3. Leaving out `task_type` gives exactly the old behaviour. To add a type, add a YAML entry; no code change is needed.
+
 ### Local RAG
 
 If `file_paths` points to a directory and `rag.enabled` is `true`, the server will embed the directory contents using a local embedding model (via Ollama) and use a local FAISS vector store to inject only the most relevant text chunks into the context based on the current `task`. This avoids flooding the context window with entire large directories.
@@ -214,6 +236,53 @@ prompt / completion / thinking, and the count of answers cut off at the output c
 Cache hits are excluded from spend and counted separately as tokens saved.
 
 Counters reset when the server restarts, since they live in the server process.
+
+### Prometheus metrics (`worker-metrics`)
+
+Each server instance appends one JSONL line per call (and one per failed tier) to `~/.llm_worker_pool/events.jsonl`. Every line is a single `O_APPEND` write, so several instances (Claude Code, Gemini CLI…) can share the file safely. It rotates to `events.jsonl.1` at `metrics.max_bytes`. Task and response text are never logged unless `logging.debug_log_content` is on. `stats.json` and `/worker` work the same as before.
+
+A separate exporter process turns the log into metrics. It reads only the new bytes on each scrape:
+
+```bash
+uv pip install -e ".[metrics]"
+worker-metrics                      # http://127.0.0.1:9464/metrics
+curl -s 127.0.0.1:9464/metrics | grep llm_worker_
+```
+
+It is a separate process because MCP runs over stdio and often as several instances at once. An HTTP endpoint inside each instance would fight over the port, and each would only see its own part of the traffic.
+
+| metric | labels |
+|---|---|
+| `llm_worker_requests_total` | provider, model, budget, task_type, outcome |
+| `llm_worker_latency_seconds` (histogram) | provider, budget, outcome |
+| `llm_worker_tokens_total` | provider, kind (prompt/completion/thinking) |
+| `llm_worker_fallback_total` | requested, answered |
+| `llm_worker_errors_total` | provider, code (timeout, http_503, prompt_too_large…) |
+| `llm_worker_warnings_total` | code (fallback_used, output_truncated_at_max_tokens, json_parse_failed, secret_redacted, citation_unverified…) |
+| `llm_worker_guardrail_actions_total` | action |
+| `llm_worker_eval_score` (gauge) | metric, provider, budget, task_type (from `eval_latest.json`) |
+
+`InvocationLogger(sinks=[...])` is a hook for a future tracer such as a self-hosted Langfuse. Nothing is installed for it yet.
+
+## Evaluation (`worker-eval`)
+
+```bash
+uv pip install -e ".[eval]"
+worker-eval --arm groq --arm gemini-lite --arm gemini --label baseline        # harness off
+worker-eval --arm groq --arm gemini-lite --harness on --compare evals/reports/<baseline>.json
+worker-eval --compare A.json B.json                                          # diff only
+```
+
+- **Dataset.** Cases live in `evals/datasets/*.jsonl` (fixtures in `evals/datasets/fixtures/`). Fields: `id, task, task_type, budget, file_paths|context, output_format, json_schema, reference, expected_findings, expected_fields, must_contain, must_not_contain, expect_file_denied`.
+- **Arms.** Each `--arm` forces one provider with fallbacks off, so the scores belong to that model. `--arm routed` uses the real routing instead. With `--harness on`, each case's `task_type` is passed to the worker.
+- **LLM-judged metrics (RAGAS).**
+  - `faithfulness`: not computed for review/generate, where the claims do not come from the context.
+  - `factual_correctness`: needs a `reference`.
+  - `context_precision` / `context_recall`: only for cases whose `file_paths` is a directory.
+  - `answer_relevancy`: needs Ollama `nomic-embed-text` at `eval.embedding_endpoint`, and is skipped when that is unreachable.
+- **Judge.** The judge is `eval.judge_provider` (gemini-lite by default, since gemini-flash was too overloaded to judge on 2026-10-30; override with `--judge-provider`). It is called through the openai client with key rotation, a circuit breaker and a bounded timeout. If the judge's model is also one of the arms, the report flags the self-preference risk.
+- **Deterministic metrics.** `bug_recall` (cited file plus a line within ±3), `citation_valid_rate`, `json_valid`/`json_schema_valid`, `field_accuracy`, `must_contain`, `no_leak`, `file_denied`, fallback/truncation rates, latency p50/p95 and tokens.
+- **Output.** Reports go to `evals/reports/<timestamp>[-label].{json,md}`. Scores are also merged into `~/.llm_worker_pool/eval_latest.json` for the exporter, so a `--case`/`--task-type` subset run only replaces what it measured.
 
 ### `/worker` slash command in Claude Code
 

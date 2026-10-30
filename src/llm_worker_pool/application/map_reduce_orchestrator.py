@@ -9,6 +9,7 @@ from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskRes
 from llm_worker_pool.domain.chunker import Chunker
 from llm_worker_pool.domain.file_context import FileContextResolver, resolve_request_context
 from llm_worker_pool.domain.token_estimate import CONTEXT_RESERVE_RATIO
+from llm_worker_pool.domain.validators import citation_warnings
 
 
 class MapReduceOrchestrator:
@@ -27,7 +28,9 @@ class MapReduceOrchestrator:
             # Nothing to map-reduce over, just call directly
             return await self._use_case.execute(request)
 
-        # 1. Resolve context first
+        # 1. Resolve context first. The task profile is applied here too, so chunk
+        # sizing uses the budget the profile picks.
+        request, _ = self._use_case.apply_task_profile(request)
         profile = self._use_case.resolve_budget(request.budget)
 
         combined_context, file_warnings = await resolve_request_context(
@@ -63,6 +66,7 @@ class MapReduceOrchestrator:
                 budget=request.budget,
                 context=f"Part {i+1} of {len(chunks)}:\n{chunk}",
                 output_format="text", 
+                task_type=request.task_type,
             )
             map_tasks.append(self._use_case.execute(map_req))
             
@@ -93,9 +97,21 @@ class MapReduceOrchestrator:
             context=reduce_context,
             output_format=request.output_format,
             json_schema=request.json_schema,
+            task_type=request.task_type,
         )
         
         final_result = await self._use_case.execute(reduce_req)
+
+        if final_result.success and final_result.verification is not None:
+            # The reduce call only saw the map extracts, which carry no file headers -
+            # re-check the citations against the files they actually point into.
+            final_result.warnings = [
+                w for w in final_result.warnings if not w.startswith("citation_unverified:")
+            ]
+            final_result.verification = self._use_case.verify_citations(
+                final_result.raw_text, final_result.content, combined_context
+            )
+            final_result.warnings.extend(citation_warnings(final_result.verification))
         
         # Add map-reduce warnings
         final_result.warnings.extend(file_warnings)

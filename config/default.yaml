@@ -182,3 +182,47 @@ circuit_breaker:
   enabled: true
   failure_threshold: 3
   quarantine_seconds: 60.0
+
+metrics:
+  # Every server instance appends one JSONL line per call to the shared event log;
+  # `worker-metrics` (separate process, [metrics] extra) serves it as Prometheus
+  # metrics on exporter_host:exporter_port. Task/response text is never logged
+  # unless logging.debug_log_content is on.
+  enabled: true
+  # event_log_path: ~/.llm_worker_pool/events.jsonl
+  max_bytes: 50000000
+  exporter_host: 127.0.0.1
+  exporter_port: 9464
+  # eval_latest_path: ~/.llm_worker_pool/eval_latest.json  (written by worker-eval)
+
+guardrails:
+  # Never read these through file_paths, even inside allowed_roots (allowed_roots is
+  # the whole D:/ drive, which includes this repo's own .env with every API key).
+  # A glob without "/" matches the file name, one with "/" the whole path.
+  # Omit deny_globs to use the built-in list; extra_deny_globs adds to it.
+  # deny_globs: [".env*", "*.pem", "*.key", "*id_rsa*", "*id_ed25519*", "credentials*.json", "**/.git/**"]
+  extra_deny_globs: []
+  # Replace secret-looking literals (AIza..., gsk_..., sk-..., ghp_..., PEM private
+  # keys, password="...", SECRET_TOKEN=..., user:pass@ in URLs) with
+  # [REDACTED:<kind>] whenever any tier of the fallback chain is a cloud provider,
+  # and flag secrets that show up in an answer.
+  redact_secrets: true
+  # extra_patterns: {internal_token: "itk_[0-9a-f]{32}"}
+  # Providers whose traffic never leaves the machine (type ollama counts automatically).
+  local_providers: [ollama]
+
+eval:
+  # worker-eval judge (RAGAS, [eval] extra): an openai_compatible provider entry above.
+  # When an eval arm uses the same model, the report flags the self-preference risk.
+  # gemini-lite, not flash: on 2026-10-30 gemini-flash-latest timed out even on a
+  # "Say OK" prompt, which stalled the first baseline run for 30 minutes in judge
+  # calls. Override per run with `worker-eval --judge-provider gemini`.
+  judge_provider: gemini-lite
+  judge_reasoning_effort: low
+  judge_timeout_seconds: 90
+  judge_max_retries: 2
+  # AnswerRelevancy needs embeddings: Ollama's OpenAI-compatible endpoint, local and free.
+  # Skipped (noted in the report) when unreachable.
+  embedding_endpoint: http://localhost:11434/v1
+  embedding_model: nomic-embed-text
+  max_concurrency: 3

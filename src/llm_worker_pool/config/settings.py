@@ -21,11 +21,12 @@ from pydantic_settings import (
 )
 
 from llm_worker_pool.domain.exceptions import ConfigurationError
-from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions
+from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, TaskProfile
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "default.yaml"
 _DEFAULT_BUDGETS_PATH = _REPO_ROOT / "config" / "budgets.yaml"
+_DEFAULT_TASK_PROFILES_PATH = _REPO_ROOT / "config" / "task_profiles.yaml"
 
 # pydantic-settings' own dotenv source only feeds declared AppConfig fields - it never
 # touches os.environ. But provider API keys (api_key_env/api_key_envs) are arbitrary
@@ -36,6 +37,7 @@ load_dotenv(_REPO_ROOT / ".env", override=False)
 
 CONFIG_PATH_ENV_VAR = "LLM_WORKER_POOL_CONFIG"
 BUDGETS_PATH_ENV_VAR = "LLM_WORKER_POOL_BUDGETS_CONFIG"
+TASK_PROFILES_PATH_ENV_VAR = "LLM_WORKER_POOL_TASK_PROFILES_CONFIG"
 
 
 def _resolve_path(env_var: str, default: Path) -> Path:
@@ -128,6 +130,49 @@ class CircuitBreakerConfig(BaseModel):
     quarantine_seconds: float = 60.0
 
 
+class MetricsConfig(BaseModel):
+    """Shared JSONL event log (infra/event_log.py) and the `worker-metrics` exporter."""
+
+    enabled: bool = True
+    event_log_path: str | None = None
+    """None = ~/.llm_worker_pool/events.jsonl."""
+    max_bytes: int = 50_000_000
+    """Rotate to events.jsonl.1 past this size."""
+    exporter_host: str = "127.0.0.1"
+    exporter_port: int = 9464
+    eval_latest_path: str | None = None
+    """None = ~/.llm_worker_pool/eval_latest.json (written by `worker-eval`)."""
+
+
+class GuardrailsConfig(BaseModel):
+    """Input/output guardrails (domain/guardrails.py)."""
+
+    deny_globs: list[str] | None = None
+    """Paths never read through file_paths, even inside allowed_roots.
+    None = the built-in list (DEFAULT_DENY_GLOBS); [] disables the deny-list."""
+    extra_deny_globs: list[str] = Field(default_factory=list)
+    """Added on top of deny_globs (or the defaults) - extend without restating them."""
+    redact_secrets: bool = True
+    """Replace secret-looking literals with [REDACTED:<kind>] before a cloud call."""
+    extra_patterns: dict[str, str] = Field(default_factory=dict)
+    """Extra {kind: regex} secret patterns."""
+    local_providers: list[str] = Field(default_factory=lambda: ["ollama"])
+    """Provider instance names whose traffic never leaves the machine (no redaction)."""
+
+
+class EvalConfig(BaseModel):
+    """`worker-eval` settings. The judge is called through the openai client against an
+    OpenAI-compatible endpoint, reusing a provider entry's endpoint and keys."""
+
+    judge_provider: str = "gemini-lite"
+    judge_reasoning_effort: str | None = "low"
+    judge_timeout_seconds: float = 90.0
+    judge_max_retries: int = 2
+    embedding_endpoint: str = "http://localhost:11434/v1"
+    embedding_model: str = "nomic-embed-text"
+    max_concurrency: int = 3
+
+
 class AppConfig(BaseSettings):
     """Root configuration. Priority sources (high -> low):
     init kwargs > real environment variables (LLM_WORKER_POOL_..., nested with
@@ -178,6 +223,9 @@ class AppConfig(BaseSettings):
     jobs: JobsConfig = Field(default_factory=JobsConfig)
     rag: RagConfig = Field(default_factory=RagConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig)
+    eval: EvalConfig = Field(default_factory=EvalConfig)
 
     @classmethod
     def settings_customise_sources(
@@ -223,5 +271,26 @@ def load_budget_profiles(path: Path | None = None) -> dict[str, BudgetProfile]:
             )
         except Exception as exc:  # noqa: BLE001 - wrap in domain error with context
             raise ConfigurationError(f"Budget '{name}' is misconfigured: {exc}") from exc
+
+    return profiles
+
+
+def load_task_profiles(path: Path | None = None) -> dict[str, TaskProfile]:
+    """Reads task_profiles.yaml and returns {task_type: TaskProfile}. A missing file is
+    not an error (task_type then only accepts None), unlike budgets.yaml."""
+
+    resolved = path or _resolve_path(TASK_PROFILES_PATH_ENV_VAR, _DEFAULT_TASK_PROFILES_PATH)
+    if not resolved.exists():
+        return {}
+
+    with open(resolved, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    profiles: dict[str, TaskProfile] = {}
+    for name, body in (raw.get("task_types") or {}).items():
+        try:
+            profiles[name] = TaskProfile(name=name, **(body or {}))
+        except Exception as exc:  # noqa: BLE001 - wrap in domain error with context
+            raise ConfigurationError(f"Task profile '{name}' is misconfigured: {exc}") from exc
 
     return profiles

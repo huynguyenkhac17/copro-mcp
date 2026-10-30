@@ -21,13 +21,15 @@ from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCa
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.application.job_manager import JobManager
 from llm_worker_pool.application.map_reduce_orchestrator import MapReduceOrchestrator
-from llm_worker_pool.config.settings import AppConfig, load_budget_profiles
+from llm_worker_pool.config.settings import AppConfig, load_budget_profiles, load_task_profiles
 from llm_worker_pool.domain.chunker import Chunker
 from llm_worker_pool.domain.exceptions import LocalAIGatewayError
 from llm_worker_pool.domain.file_context import FileContextResolver
+from llm_worker_pool.domain.guardrails import DEFAULT_DENY_GLOBS, PathDenyList, SecretScanner
 from llm_worker_pool.infra.url_fetcher import UrlContextFetcher
 from llm_worker_pool.domain.rag_indexer import RagIndexer
 from llm_worker_pool.infra.cache import InMemoryTTLCache
+from llm_worker_pool.infra.event_log import EventLog, configured_path, default_event_log_path
 from llm_worker_pool.infra.logging import InvocationLogger, configure_logging, get_logger
 from llm_worker_pool.infra.stats import GatewayStats, StatsCollector, default_snapshot_path
 from llm_worker_pool.providers.ollama_embedding_provider import OllamaEmbeddingProvider
@@ -43,15 +45,28 @@ def _build_use_case(
 ) -> tuple[DelegateTaskUseCase, FileContextResolver]:
     budget_profiles = load_budget_profiles()
     providers = ProviderFactory(config).create_all()
+    event_log = None
+    if config.metrics.enabled:
+        event_log = EventLog(
+            configured_path(config.metrics.event_log_path, default_event_log_path()),
+            max_bytes=config.metrics.max_bytes,
+        )
     invocation_logger = InvocationLogger(
         get_logger("llm_worker_pool.invocation"),
         debug_log_content=config.logging.debug_log_content,
         stats_collector=stats_collector,
+        event_log=event_log,
     )
+    guardrails = config.guardrails
+    deny_globs = [
+        *(DEFAULT_DENY_GLOBS if guardrails.deny_globs is None else guardrails.deny_globs),
+        *guardrails.extra_deny_globs,
+    ]
     file_context_resolver = FileContextResolver(
         allowed_roots=[Path(root) for root in config.file_access.allowed_roots],
         max_file_bytes=config.file_access.max_file_bytes,
         max_total_bytes=config.file_access.max_total_bytes,
+        deny_list=PathDenyList(deny_globs) if deny_globs else None,
     )
     
     url_fetcher = None
@@ -83,6 +98,11 @@ def _build_use_case(
         file_context_resolver=file_context_resolver,
         rag_indexer=rag_indexer,
         url_fetcher=url_fetcher,
+        task_profiles=load_task_profiles(),
+        secret_scanner=(
+            SecretScanner(guardrails.extra_patterns) if guardrails.redact_secrets else None
+        ),
+        local_providers=guardrails.local_providers,
     )
     
     return use_case, file_context_resolver
@@ -111,6 +131,10 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
     ) or "none"
     budget_names = ", ".join(sorted(use_case.available_budgets()))
     provider_names = ", ".join(sorted(use_case.available_providers()))
+    task_types = "; ".join(
+        f"{name} ({p.description})" if p.description else name
+        for name, p in use_case.available_task_types().items()
+    ) or "none configured"
 
     server = MCPServer(name=_SERVER_NAME, version=__version__)
 
@@ -160,6 +184,14 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             f"per budget when `provider` is unset: {budget_routing}). "
             f"Available budgets: {budget_names} - pick the smallest one that plausibly fits the task. "
             "Set output_format='json' (optionally with json_schema) if you need structured data back. "
+            f"Set task_type to one of: {task_types} - it adds an output contract for that kind "
+            "of work (and for review/explain/summarize a `verification` field checking every "
+            "path:line the worker cites against the files it was given; drop findings whose "
+            "status is not 'ok'). Explicit budget/output_format/json_schema override the "
+            "task type's defaults; omit task_type for free-form tasks. "
+            "Files matching the secret deny-list (.env*, *.pem, *.key, ...) are never read, and "
+            "secret-looking literals are redacted before any cloud call - see "
+            "`guardrail_actions` in the result. "
             "A 'cached' field in the result indicates if the response was served from cache. "
             "Use async_mode=true for tasks expected to take a long time to prevent timeout; check "
             "status later via check_job_status, do not poll in a tight loop. "
@@ -170,28 +202,44 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
     async def delegate_task(
         task: str,
         provider: str | None = None,
-        budget: str = "L2",
+        budget: str | None = None,
         context: str | None = None,
         file_paths: list[str] | None = None,
         urls: list[str] | None = None,
-        output_format: str = "text",
+        output_format: str | None = None,
         json_schema: dict[str, Any] | None = None,
         async_mode: bool = False,
         map_reduce: bool = False,
+        task_type: str | None = None,
     ) -> DelegateTaskResult:
         try:
-            request = DelegateTaskRequest(
-                task=task,
-                provider=provider,
-                budget=budget,
-                context=context,
-                file_paths=file_paths,
-                urls=urls,
-                output_format=output_format,  # type: ignore[arg-type]
-                json_schema=json_schema,
-            )
+            fields: dict[str, Any] = {
+                "task": task,
+                "provider": provider,
+                "context": context,
+                "file_paths": file_paths,
+                "urls": urls,
+                "json_schema": json_schema,
+                "task_type": task_type,
+            }
+            # Only forward what the caller actually set, so a task type's own
+            # default budget/output format can apply (DelegateTaskRequest tracks
+            # explicitly-set fields). Without task_type the DTO defaults are the
+            # same as before: budget L2, text output.
+            if budget is not None:
+                fields["budget"] = budget
+            if output_format is not None:
+                fields["output_format"] = output_format
+            request = DelegateTaskRequest(**fields)
         except Exception as exc:  # noqa: BLE001 - invalid input from Claude
             return DelegateTaskResult(success=False, error=f"Invalid input: {exc}")
+
+        try:
+            # Fail an unknown task_type now rather than inside an async job, and report
+            # the budget the task type actually picks.
+            effective_budget = use_case.apply_task_profile(request)[0].budget
+        except LocalAIGatewayError as exc:
+            return DelegateTaskResult(success=False, budget_used=request.budget, error=str(exc))
 
         if map_reduce:
             coro = map_reduce_orchestrator.execute(request)
@@ -204,14 +252,14 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                 success=True,
                 status="running",
                 job_id=job_id,
-                budget_used=budget,
+                budget_used=effective_budget,
             )
         else:
             try:
                 return await coro
             except LocalAIGatewayError as exc:
                 _logger.error("delegate_task failed: %s", exc)
-                return DelegateTaskResult(success=False, budget_used=budget, error=str(exc))
+                return DelegateTaskResult(success=False, budget_used=effective_budget, error=str(exc))
 
     @server.tool(
         name="check_job_status",

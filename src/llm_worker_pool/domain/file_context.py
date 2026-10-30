@@ -17,6 +17,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from llm_worker_pool.domain.guardrails import PathDenyList
+
 
 class ResolvedFileContext(BaseModel):
     text: str
@@ -37,8 +39,10 @@ class FileContextResolver:
         allowed_roots: list[Path],
         max_file_bytes: int = 200_000,
         max_total_bytes: int = 800_000,
+        deny_list: PathDenyList | None = None,
     ) -> None:
         self._allowed_roots = [_normalize_root(r) for r in allowed_roots]
+        self._deny_list = deny_list
         self._max_file_bytes = max_file_bytes
         self._max_total_bytes = max_total_bytes
 
@@ -73,12 +77,21 @@ class FileContextResolver:
             if not self._is_allowed(resolved):
                 warnings.append(f"file_access_denied:{raw}")
                 continue
+            if self._is_sensitive(Path(raw), resolved):
+                warnings.append(f"file_denied_sensitive:{raw}")
+                continue
                 
             if resolved.is_dir():
                 # Non-recursive directory traversal, limits to first 100 files
                 count = 0
                 for child in resolved.iterdir():
-                    if child.is_file() and self._is_allowed(child):
+                    if not child.is_file():
+                        continue
+                    child_resolved = child.resolve()
+                    if self._is_sensitive(child, child_resolved):
+                        warnings.append(f"file_denied_sensitive:{child}")
+                        continue
+                    if self._is_allowed(child_resolved):
                         if count >= 100:
                             warnings.append(f"file_dir_too_many_files:{raw}")
                             break
@@ -139,6 +152,13 @@ class FileContextResolver:
             except OSError:
                 continue
         return False
+
+    def _is_sensitive(self, given: Path, resolved: Path) -> bool:
+        """Checked on both the name the caller used and the symlink target, so neither
+        `notes.txt -> .env` nor `.env -> config.txt` slips through."""
+        if self._deny_list is None:
+            return False
+        return bool(self._deny_list.match(given) or self._deny_list.match(resolved))
 
     def _is_allowed(self, resolved: Path) -> bool:
         return any(

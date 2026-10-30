@@ -139,7 +139,11 @@ class OpenAICompatibleProvider:
                     "json_schema": {
                         "name": "response",
                         "schema": options.format,
-                        "strict": True,
+                        # Strict mode only for schemas that already satisfy its rules;
+                        # Groq answers any other schema with HTTP 400 (found by
+                        # worker-eval 2026-10-30: every json_schema call to groq failed).
+                        # The answer is still validated by OutputParser either way.
+                        "strict": _is_strict_compatible(options.format),
                     },
                 }
             elif options.format == "json":
@@ -228,3 +232,19 @@ class OpenAICompatibleProvider:
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+
+def _is_strict_compatible(schema: Any) -> bool:
+    """OpenAI-style strict structured output: every object lists all of its properties
+    as required and sets additionalProperties: false."""
+    if isinstance(schema, list):
+        return all(_is_strict_compatible(item) for item in schema)
+    if not isinstance(schema, dict):
+        return True
+    if schema.get("type") == "object" or "properties" in schema:
+        props = schema.get("properties") or {}
+        if schema.get("additionalProperties") is not False:
+            return False
+        if set(schema.get("required") or []) != set(props):
+            return False
+    return all(_is_strict_compatible(value) for value in schema.values() if isinstance(value, (dict, list)))

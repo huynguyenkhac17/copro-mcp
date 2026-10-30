@@ -42,19 +42,29 @@ def build_ollama(name: str, config: ProviderInstanceConfig, **kwargs) -> LLMProv
         model=config.model,
     )
 
+def _api_key_env_vars(config: ProviderInstanceConfig) -> list[str]:
+    return [*(config.api_key_envs or []), *([config.api_key_env] if config.api_key_env else [])]
+
+
+def resolve_api_keys(config: ProviderInstanceConfig) -> list[str]:
+    """Distinct non-empty key values named by api_key_envs/api_key_env, in order.
+    Also used by `worker-eval` to build its judge client from a provider entry."""
+    api_keys: list[str] = []
+    for env_var in _api_key_env_vars(config):
+        value = os.environ.get(env_var, "")
+        if value and value not in api_keys:
+            api_keys.append(value)
+    return api_keys
+
+
 def build_openai_compatible(
     name: str,
     config: ProviderInstanceConfig,
     circuit_breaker: KeyCircuitBreaker | None = None,
     **kwargs,
 ) -> LLMProvider:
-    env_vars = [*(config.api_key_envs or []), *([config.api_key_env] if config.api_key_env else [])]
-
-    api_keys: list[str] = []
-    for env_var in env_vars:
-        value = os.environ.get(env_var, "")
-        if value and value not in api_keys:
-            api_keys.append(value)
+    env_vars = _api_key_env_vars(config)
+    api_keys = resolve_api_keys(config)
 
     if not api_keys:
         checked = ", ".join(env_vars) or "(none configured)"

@@ -14,11 +14,24 @@ from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskRes
 from llm_worker_pool.config.settings import AppConfig
 from llm_worker_pool.domain.exceptions import ConfigurationError, LocalAIGatewayError
 from llm_worker_pool.domain.file_context import FileContextResolver, resolve_request_context
+from llm_worker_pool.domain.guardrails import SecretScanner, format_counts
 from llm_worker_pool.domain.interfaces import LLMProvider
-from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
+from llm_worker_pool.domain.models import (
+    BudgetProfile,
+    GenerationOptions,
+    ProviderResponse,
+    TaskProfile,
+)
 from llm_worker_pool.domain.output_parser import OutputParser
 from llm_worker_pool.domain.prompt_builder import PromptBuilder
 from llm_worker_pool.domain.rag_indexer import RagIndexer
+from llm_worker_pool.domain.validators import (
+    CitationValidator,
+    build_json_repair_prompt,
+    citation_warnings,
+    extract_citations,
+    split_context_files,
+)
 from llm_worker_pool.infra.logging import InvocationLogger
 from llm_worker_pool.infra.retry import with_backoff
 from llm_worker_pool.infra.url_fetcher import UrlContextFetcher
@@ -40,6 +53,9 @@ class DelegateTaskUseCase:
         file_context_resolver: FileContextResolver | None = None,
         rag_indexer: RagIndexer | None = None,
         url_fetcher: UrlContextFetcher | None = None,
+        task_profiles: dict[str, TaskProfile] | None = None,
+        secret_scanner: SecretScanner | None = None,
+        local_providers: list[str] | None = None,
     ) -> None:
         self._providers = providers
         self._default_provider = default_provider
@@ -53,8 +69,13 @@ class DelegateTaskUseCase:
         )
         self._rag_indexer = rag_indexer
         self._url_fetcher = url_fetcher
+        self._task_profiles = task_profiles or {}
+        self._secret_scanner = secret_scanner
+        """None = no redaction and no output scan (guardrails.redact_secrets: false)."""
+        self._local_providers = frozenset(local_providers or ())
 
     async def execute(self, request: DelegateTaskRequest) -> DelegateTaskResult:
+        request, task_profile = self.apply_task_profile(request)
         profile = self.resolve_budget(request.budget)
 
         provider_name = request.provider or self._budget_default_provider(request.budget)
@@ -64,23 +85,23 @@ class DelegateTaskUseCase:
             raise ConfigurationError(
                 f"Provider '{provider_name}' does not exist. Available providers: {available}"
             )
+        chain = self._fallback_chain(provider_name, request)
 
-        combined_context, file_warnings = await resolve_request_context(
-            self._file_context_resolver,
-            context=request.context,
-            file_paths=request.file_paths,
-            query=request.task,
-            rag_indexer=self._rag_indexer,
-            urls=request.urls,
-            url_fetcher=self._url_fetcher,
+        combined_context, file_warnings = await self.resolve_context(request)
+        task, combined_context, redaction_warnings = self._guard_input(
+            request.task, combined_context, chain
         )
+        guardrail_actions = [
+            w for w in file_warnings if w.startswith("file_denied_sensitive:")
+        ] + redaction_warnings
 
         built = self._prompt_builder.build(
-            task=request.task,
+            task=task,
             context=combined_context,
             profile=profile,
             output_format=request.output_format,
             json_schema=request.json_schema,
+            system_addon=task_profile.system_addon if task_profile else None,
         )
 
         options = profile.options.model_copy(
@@ -101,11 +122,7 @@ class DelegateTaskUseCase:
         failures: list[str] = []
         # Tiers skipped at startup (e.g. their API keys are unset) are dropped up front so
         # "is there a later tier?" below only counts tiers that can actually answer.
-        tiers = [
-            self._providers[name]
-            for name in self._fallback_chain(provider_name, request)
-            if name in self._providers
-        ]
+        tiers = [self._providers[name] for name in chain if name in self._providers]
         for index, tier in enumerate(tiers):
             has_next = index < len(tiers) - 1
             tier_timeout = self._tier_timeout(timeout, has_next)
@@ -135,6 +152,7 @@ class DelegateTaskUseCase:
                 latency_ms=(time.monotonic() - tier_start) * 1000,
                 error=error,
                 task=request.task,
+                task_type=request.task_type,
             )
             failures.append(f"{tier.provider_name}: {self._short_error(error)}")
             provider = tier
@@ -148,6 +166,8 @@ class DelegateTaskUseCase:
                 latency_ms=(time.monotonic() - start) * 1000,
                 # A single-provider chain keeps the original, unabridged error.
                 error=error if len(failures) == 1 else "All providers failed: " + "; ".join(failures),
+                task_type=request.task_type,
+                guardrail_actions=guardrail_actions,
             )
 
         retried_without_thinking = False
@@ -177,7 +197,7 @@ class DelegateTaskUseCase:
             except (TimeoutError, LocalAIGatewayError):
                 pass  # keep the original (empty) response, fall through to the warning below
 
-        warnings = [*file_warnings, *built.warnings]
+        warnings = [*file_warnings, *redaction_warnings, *built.warnings]
         if failures:
             warnings.append(
                 f"fallback_used:{provider.provider_name} after " + "; ".join(failures)
@@ -208,10 +228,21 @@ class DelegateTaskUseCase:
                 "set a lower reasoning_effort for this budget"
             )
 
+        validators = task_profile.validators if task_profile else []
         if request.output_format == "json":
-            parsed = self._output_parser.parse(response.raw_text, request.json_schema)
-            warnings.extend(parsed.warnings)
-            content = parsed.content if parsed.content is not None else response.raw_text
+            content, response = await self._parse_json(
+                request, response, provider, used_options, used_timeout, built.system_prompt,
+                warnings, repair="json_repair" in validators,
+            )
+
+        verification = None
+        if "citations" in validators:
+            verification = self.verify_citations(response.raw_text, content, combined_context)
+            warnings.extend(citation_warnings(verification))
+
+        leaked = self._guard_output(response.raw_text)
+        warnings.extend(leaked)
+        guardrail_actions.extend(leaked)
 
         self._logger.log_success(
             budget=request.budget,
@@ -227,6 +258,10 @@ class DelegateTaskUseCase:
             warnings=warnings,
             task=request.task,
             raw_response=response.raw_text,
+            task_type=request.task_type,
+            requested_provider=tiers[0].provider_name,
+            fallback_chain=[t.provider_name for t in tiers[: len(failures) + 1]],
+            guardrail_actions=guardrail_actions,
         )
 
         return DelegateTaskResult(
@@ -245,11 +280,146 @@ class DelegateTaskUseCase:
             cached=response.from_cache,
             warnings=warnings,
             error=None,
+            task_type=request.task_type,
+            guardrail_actions=guardrail_actions,
+            verification=verification,
+        )
+
+    def apply_task_profile(
+        self, request: DelegateTaskRequest
+    ) -> tuple[DelegateTaskRequest, TaskProfile | None]:
+        """Fill budget/output_format/json_schema from the task profile wherever the
+        caller left them unset. task_type=None returns the request untouched."""
+        if request.task_type is None:
+            return request, None
+        task_profile = self._task_profiles.get(request.task_type)
+        if task_profile is None:
+            available = ", ".join(sorted(self._task_profiles)) or "(none configured)"
+            raise ConfigurationError(
+                f"Task type '{request.task_type}' does not exist. Available task types: {available}"
+            )
+        explicit = request.model_fields_set
+        update: dict[str, object] = {}
+        if task_profile.default_budget and "budget" not in explicit:
+            update["budget"] = task_profile.default_budget
+        if task_profile.output_format and "output_format" not in explicit:
+            update["output_format"] = task_profile.output_format
+        output_format = update.get("output_format", request.output_format)
+        if output_format == "json" and request.json_schema is None and task_profile.json_schema:
+            update["json_schema"] = task_profile.json_schema
+        return (request.model_copy(update=update) if update else request), task_profile
+
+    def _is_local(self, name: str) -> bool:
+        if name in self._local_providers:
+            return True
+        instance = self._config.providers.get(name)
+        return instance is not None and instance.type == "ollama"
+
+    def _guard_input(
+        self, task: str, context: str | None, chain: list[str]
+    ) -> tuple[str, str | None, list[str]]:
+        """Redact secrets from task + context when ANY tier of the chain is a cloud
+        provider - the fallback decides where the text ends up, not the first pick."""
+        if self._secret_scanner is None or all(self._is_local(name) for name in chain):
+            return task, context, []
+        task, counts = self._secret_scanner.redact(task)
+        if context:
+            context, context_counts = self._secret_scanner.redact(context)
+            counts.update(context_counts)
+        return task, context, format_counts("secret_redacted", counts)
+
+    def _guard_output(self, raw_text: str) -> list[str]:
+        """The worker may echo a secret that slipped past input redaction (or was
+        local-only). Flag it; the caller decides what to do with the answer."""
+        if self._secret_scanner is None or not raw_text:
+            return []
+        return format_counts("secret_in_response", self._secret_scanner.scan(raw_text))
+
+    async def _parse_json(
+        self,
+        request: DelegateTaskRequest,
+        response: ProviderResponse,
+        provider: LLMProvider,
+        options: GenerationOptions,
+        timeout: float,
+        system_prompt: str | None,
+        warnings: list[str],
+        *,
+        repair: bool,
+    ) -> tuple[object, ProviderResponse]:
+        """Parse the answer as JSON; with `repair`, a failed parse/schema check gets
+        one retry on the answering tier, shown its own output and the errors.
+        Returns (content, response) - the response is the repaired one on success."""
+        parsed = self._output_parser.parse(response.raw_text, request.json_schema)
+        failed = [
+            w for w in parsed.warnings
+            if w.startswith(("json_parse_failed", "json_schema_validation_failed"))
+        ]
+        if repair and failed:
+            repaired = await self._repair_json(
+                request, response, provider, options, timeout, system_prompt, failed
+            )
+            if repaired is not None:
+                fixed = self._output_parser.parse(repaired.raw_text, request.json_schema)
+                if not any(
+                    w.startswith(("json_parse_failed", "json_schema_validation_failed"))
+                    for w in fixed.warnings
+                ):
+                    warnings.extend(fixed.warnings)
+                    warnings.append("json_repaired")
+                    return fixed.content, repaired
+        warnings.extend(parsed.warnings)
+        content = parsed.content if parsed.content is not None else response.raw_text
+        return content, response
+
+    async def _repair_json(
+        self,
+        request: DelegateTaskRequest,
+        response: ProviderResponse,
+        provider: LLMProvider,
+        options: GenerationOptions,
+        timeout: float,
+        system_prompt: str | None,
+        errors: list[str],
+    ) -> ProviderResponse | None:
+        prompt = build_json_repair_prompt(response.raw_text, errors, request.json_schema)
+        # The repair prompt quotes the previous answer, which may hold an echoed secret.
+        if self._secret_scanner is not None and not self._is_local(provider.provider_name):
+            prompt, _ = self._secret_scanner.redact(prompt)
+        try:
+            return await self._call_provider(
+                provider, prompt, options.model_copy(update={"system_prompt": system_prompt}), timeout
+            )
+        except (TimeoutError, LocalAIGatewayError):
+            return None
+
+    @staticmethod
+    def verify_citations(raw_text: str, content: object, context: str | None) -> dict:
+        """Public for MapReduceOrchestrator, whose reduce step only sees the map
+        extracts and must re-check citations against the original files."""
+        files = split_context_files(context)
+        return CitationValidator(files).validate(extract_citations(raw_text, content))
+
+    async def resolve_context(self, request: DelegateTaskRequest) -> tuple[str | None, list[str]]:
+        """The context text exactly as it will be sent (context + file_paths + urls),
+        plus the warnings raised while gathering it. Public so `worker-eval` can hand
+        the very same text to RAGAS as retrieved_contexts."""
+        return await resolve_request_context(
+            self._file_context_resolver,
+            context=request.context,
+            file_paths=request.file_paths,
+            query=request.task,
+            rag_indexer=self._rag_indexer,
+            urls=request.urls,
+            url_fetcher=self._url_fetcher,
         )
 
     @property
     def url_fetcher(self) -> UrlContextFetcher | None:
         return self._url_fetcher
+
+    def available_task_types(self) -> dict[str, TaskProfile]:
+        return dict(self._task_profiles)
 
     def available_budgets(self) -> list[str]:
         return list(self._budget_profiles)
