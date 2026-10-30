@@ -12,11 +12,19 @@ skip that path and return a clear warning, similar to PromptBuilder/OutputParser
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
+from llm_worker_pool.domain.file_selection import (
+    glob_files,
+    is_glob,
+    sort_key,
+    split_glob,
+    walk_files,
+)
 from llm_worker_pool.domain.guardrails import PathDenyList
 
 
@@ -40,11 +48,17 @@ class FileContextResolver:
         max_file_bytes: int = 200_000,
         max_total_bytes: int = 800_000,
         deny_list: PathDenyList | None = None,
+        max_dir_files: int = 300,
+        max_dir_depth: int = 12,
+        max_dir_entries: int = 20_000,
     ) -> None:
         self._allowed_roots = [_normalize_root(r) for r in allowed_roots]
         self._deny_list = deny_list
         self._max_file_bytes = max_file_bytes
         self._max_total_bytes = max_total_bytes
+        self._max_dir_files = max_dir_files
+        self._max_dir_depth = max_dir_depth
+        self._max_dir_entries = max_dir_entries
 
     async def aresolve(
         self, 
@@ -65,9 +79,40 @@ class FileContextResolver:
         warnings: list[str] = []
         total_bytes = 0
 
-        # Gather all files (including from directories)
-        files_to_read = []
+        # Gather all files. A directory is walked recursively and a glob
+        # ("D:/repo/src/**/*.py") is expanded; both prune node_modules/.venv/.git...
+        # (domain/file_selection.py) and list their files most-useful-first, so when the
+        # byte budget runs out it is config/CI noise that gets dropped, not source.
+        # Each entry: (path, the file_paths item it came from if expanded, else None).
+        files_to_read: list[tuple[Path, str | None]] = []
+        seen: set[Path] = set()
         for raw in paths:
+            if is_glob(raw):
+                base, pattern = split_glob(raw)
+                try:
+                    base_resolved = base.resolve()
+                except OSError:
+                    warnings.append(f"file_invalid_path:{raw}")
+                    continue
+                if not self._is_allowed(base_resolved):
+                    warnings.append(f"file_access_denied:{raw}")
+                    continue
+                if not base_resolved.is_dir():
+                    warnings.append(f"file_not_found:{raw}")
+                    continue
+                try:
+                    found, hit_limit = glob_files(
+                        base_resolved, pattern,
+                        max_depth=self._max_dir_depth, max_entries=self._max_dir_entries,
+                    )
+                except re.error as exc:  # e.g. a character class like [z-a]
+                    warnings.append(f"file_invalid_glob:{raw} ({exc})")
+                    continue
+                if not found and not hit_limit:
+                    warnings.append(f"file_glob_no_match:{raw}")
+                self._add_expanded(raw, base_resolved, found, hit_limit, files_to_read, seen, warnings)
+                continue
+
             try:
                 resolved = Path(raw).resolve()
             except OSError:
@@ -80,52 +125,57 @@ class FileContextResolver:
             if self._is_sensitive(Path(raw), resolved):
                 warnings.append(f"file_denied_sensitive:{raw}")
                 continue
-                
+
             if resolved.is_dir():
-                # Non-recursive directory traversal, limits to first 100 files
-                count = 0
-                for child in resolved.iterdir():
-                    if not child.is_file():
-                        continue
-                    child_resolved = child.resolve()
-                    if self._is_sensitive(child, child_resolved):
-                        warnings.append(f"file_denied_sensitive:{child}")
-                        continue
-                    if self._is_allowed(child_resolved):
-                        if count >= 100:
-                            warnings.append(f"file_dir_too_many_files:{raw}")
-                            break
-                        files_to_read.append(child)
-                        count += 1
+                found, hit_limit = walk_files(
+                    resolved, max_depth=self._max_dir_depth, max_entries=self._max_dir_entries
+                )
+                self._add_expanded(raw, resolved, found, hit_limit, files_to_read, seen, warnings)
             elif resolved.is_file():
-                files_to_read.append(resolved)
+                if resolved not in seen:
+                    seen.add(resolved)
+                    files_to_read.append((resolved, None))
             else:
                 warnings.append(f"file_not_found:{raw}")
 
-        for resolved in files_to_read:
-            raw = str(resolved)
-            size = resolved.stat().st_size
-            if size > self._max_file_bytes:
-                warnings.append(f"file_too_large:{raw}")
-                continue
-            if total_bytes + size > self._max_total_bytes:
-                warnings.append(f"file_budget_exceeded:{raw}")
-                continue
-
+        # Files found by expanding a directory/glob are reported per item as counts:
+        # one warning per skipped file would bury the answer under hundreds of lines.
+        skipped: dict[tuple[str, str], int] = {}
+        for path, origin in files_to_read:
+            raw = str(path)
             try:
-                content = resolved.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                warnings.append(f"file_unreadable:{raw}")
+                size = path.stat().st_size
+            except OSError:
+                size = None
+            reason = None
+            if size is None:
+                reason = "file_unreadable"
+            elif size > self._max_file_bytes:
+                reason = "file_too_large"
+            elif total_bytes + size > self._max_total_bytes:
+                reason = "file_budget_exceeded"
+            else:
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except (UnicodeDecodeError, OSError):
+                    reason = "file_unreadable"
+            if reason is not None:
+                if origin is None:
+                    warnings.append(f"{reason}:{raw}")
+                else:
+                    skipped[(reason, origin)] = skipped.get((reason, origin), 0) + 1
                 continue
 
             total_bytes += size
-            if resolved.suffix.lower() == ".ipynb":
+            if path.suffix.lower() == ".ipynb":
                 rendered = render_notebook(content)
                 if rendered is None:
                     warnings.append(f"notebook_unparsed_sent_raw:{raw}")
                 else:
                     content = rendered
             texts_by_file[raw] = content
+        for (reason, origin), count in skipped.items():
+            warnings.append(f"{reason}:{origin} ({count} files)")
 
         if not texts_by_file:
             return ResolvedFileContext(text="", warnings=warnings)
@@ -144,8 +194,52 @@ class FileContextResolver:
         ]
         return ResolvedFileContext(text="\n\n".join(text_parts), warnings=warnings)
         
+    def _add_expanded(
+        self,
+        raw: str,
+        root: Path,
+        found: list[Path],
+        hit_limit: bool,
+        files_to_read: list[tuple[Path, str | None]],
+        seen: set[Path],
+        warnings: list[str],
+    ) -> None:
+        if hit_limit:
+            warnings.append(
+                f"file_dir_scan_limit:{raw} (stopped after {self._max_dir_entries} entries; "
+                "narrow the path or use a glob)"
+            )
+        kept: list[Path] = []
+        for child in found:
+            # The walk starts from a resolved root and does not follow directory links,
+            # so only a symlinked file can point elsewhere. Resolving every file costs
+            # seconds on a large tree on Windows.
+            try:
+                child_resolved = child.resolve() if child.is_symlink() else child
+            except OSError:
+                continue
+            if self._is_sensitive(child, child_resolved):
+                warnings.append(f"file_denied_sensitive:{child}")
+                continue
+            # A symlink pointing outside the allowed roots is skipped like before.
+            if not self._is_allowed(child_resolved) or child_resolved in seen:
+                continue
+            kept.append(child)
+        kept.sort(key=lambda p: sort_key(p, root))
+        if len(kept) > self._max_dir_files:
+            warnings.append(
+                f"file_dir_too_many_files:{raw} ({len(kept) - self._max_dir_files} of "
+                f"{len(kept)} omitted, least useful first)"
+            )
+            kept = kept[: self._max_dir_files]
+        for child in kept:
+            seen.add(child.resolve() if child.is_symlink() else child)
+            files_to_read.append((child, raw))
+
     def _has_directory(self, paths: list[str]) -> bool:
         for raw in paths:
+            if is_glob(raw):
+                return True
             try:
                 if Path(raw).is_dir():
                     return True

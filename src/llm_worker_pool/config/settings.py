@@ -86,6 +86,12 @@ class FileAccessConfig(BaseModel):
     allowed_roots: list[str] = Field(default_factory=list)
     max_file_bytes: int = 200_000
     max_total_bytes: int = 800_000
+    max_dir_files: int = 300
+    """Files kept per directory/glob item, most useful first (domain/file_selection.py)."""
+    max_dir_depth: int = 12
+    max_dir_entries: int = 20_000
+    """Directory entries scanned per item before giving up - pointing at a whole drive
+    must return quickly with a warning, not walk it."""
 
 
 class UrlFetchConfig(BaseModel):

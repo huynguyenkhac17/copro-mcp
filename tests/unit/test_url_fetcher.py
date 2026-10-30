@@ -235,3 +235,26 @@ async def test_repo_orders_source_before_tests_docs_and_config():
         "--- file: o/r/tests/test_a.py ---", "--- file: o/r/docs/guide.md ---",
         "--- file: o/r/.github/workflows/ci.yaml ---",
     ]
+
+
+def test_repo_render_skips_symlinked_files(tmp_path):
+    """A cloned repo is untrusted: a symlink in it must not pull in a file from
+    elsewhere on the machine."""
+    from llm_worker_pool.infra.url_fetcher import UrlContextFetcher
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("TOP_SECRET_OUTSIDE")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hi')")
+    try:
+        (repo / "notes.txt").symlink_to(outside)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 1314:
+            raise
+        pytest.skip(f"cannot create symlinks here: {exc}")
+
+    text, _ = UrlContextFetcher()._render_repo("https://github.com/o/r", "o/r", repo, repo, 100_000)
+
+    assert "print('hi')" in text
+    assert "TOP_SECRET_OUTSIDE" not in text

@@ -112,19 +112,25 @@ async def test_binary_file_is_unreadable(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_directory_reads_all_allowed_files_non_recursively(tmp_path: Path):
+async def test_directory_is_read_recursively_skipping_noise_dirs(tmp_path: Path):
+    # Was non-recursive until roadmap item 2 (2026-10-31): a module with
+    # subpackages had to be listed file by file.
     (tmp_path / "a.txt").write_text("content A")
     (tmp_path / "b.txt").write_text("content B")
     nested_dir = tmp_path / "nested"
     nested_dir.mkdir()
-    (nested_dir / "c.txt").write_text("content C cannot be read")
+    (nested_dir / "c.txt").write_text("content C nested")
+    for noise in ("node_modules", ".git", "__pycache__"):
+        (tmp_path / noise).mkdir()
+        (tmp_path / noise / "junk.txt").write_text(f"junk from {noise}")
 
     resolver = FileContextResolver(allowed_roots=[tmp_path])
     result = await resolver.aresolve([str(tmp_path)], query="task")
 
     assert "content A" in result.text
     assert "content B" in result.text
-    assert "content C cannot be read" not in result.text
+    assert "content C nested" in result.text
+    assert "junk from" not in result.text
 
 
 @pytest.mark.asyncio

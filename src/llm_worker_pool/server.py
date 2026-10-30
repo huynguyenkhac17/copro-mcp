@@ -68,6 +68,9 @@ def _build_use_case(
         max_file_bytes=config.file_access.max_file_bytes,
         max_total_bytes=config.file_access.max_total_bytes,
         deny_list=PathDenyList(deny_globs) if deny_globs else None,
+        max_dir_files=config.file_access.max_dir_files,
+        max_dir_depth=config.file_access.max_dir_depth,
+        max_dir_entries=config.file_access.max_dir_entries,
     )
     
     url_fetcher = None
@@ -149,7 +152,10 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "hard reasoning. You (Claude) remain the supervisor: read the worker's output, "
             "verify it, and do the final reasoning yourself - never blindly trust the content. "
             "DO NOT read large files yourself first; pass their paths via `file_paths` so the "
-            "worker reads them server-side (does not consume your tokens). Likewise pass web "
+            "worker reads them server-side (does not consume your tokens). An item may be a "
+            "file, a directory (read recursively, skipping .git/node_modules/.venv/build "
+            "output, most useful files first) or a glob such as `D:/repo/src/**/*.py`. "
+            "Likewise pass web "
             "pages or GitHub repos via `urls` (a github.com/<owner>/<repo>[/tree/<ref>/<dir>] "
             "URL is shallow-cloned and its text files inlined) instead of fetching them yourself. "
             "\n\n"

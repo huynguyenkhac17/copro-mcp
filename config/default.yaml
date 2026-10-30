@@ -149,6 +149,13 @@ file_access:
   allowed_roots: ["D:/"]
   max_file_bytes: 200000
   max_total_bytes: 800000
+  # A file_paths item may be a directory (walked recursively) or a glob
+  # ("D:/repo/src/**/*.py"). .git, node_modules, .venv, build output and lockfiles
+  # are pruned while walking; files are taken most useful first (README, source,
+  # tests, docs, then config), so the byte budget drops the noise, not the code.
+  max_dir_files: 300
+  max_dir_depth: 12
+  max_dir_entries: 20000
 
 url_fetch:
   # Lets delegate_task fetch `urls` server-side: web pages are reduced to text,

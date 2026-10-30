@@ -27,6 +27,8 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel
 
+from llm_worker_pool.domain.file_selection import sort_key, wanted
+
 _GITHUB_REPO_RE = re.compile(
     r"^https?://(?:www\.)?github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+?)(?:\.git)?"
     r"(?:/tree/(?P<ref>[^/]+)(?:/(?P<subdir>.+?))?)?/?$"
@@ -37,16 +39,6 @@ _GITHUB_BLOB_RE = re.compile(
 _TEXT_TYPES = ("text/", "application/json", "application/xml", "application/javascript",
                "application/x-yaml", "application/yaml", "application/toml")
 _MAX_REDIRECTS = 5
-_SKIP_DIRS = {".git", "node_modules", "dist", "build", "__pycache__", ".venv", "venv",
-              ".tox", ".mypy_cache", ".pytest_cache", "vendor", "target"}
-_SKIP_SUFFIXES = (".svg", ".min.js", ".map", ".ico", ".lock")
-_CODE_SUFFIXES = {".py", ".pyi", ".c", ".h", ".cc", ".cpp", ".hpp", ".rs", ".go", ".java",
-                  ".kt", ".js", ".jsx", ".ts", ".tsx", ".rb", ".php", ".cs", ".swift",
-                  ".scala", ".sh", ".sql", ".vue", ".svelte"}
-_DOC_SUFFIXES = {".md", ".rst", ".txt", ".adoc"}
-_SKIP_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock",
-               "uv.lock", "Cargo.lock", "go.sum"}
-
 HostResolver = Callable[[str], Awaitable[list[str]]]
 CloneRunner = Callable[[str, "str | None", Path, float], Awaitable[None]]
 
@@ -198,10 +190,12 @@ class UrlContextFetcher:
         self, url: str, label: str, dest: Path, root: Path, budget: int
     ) -> tuple[str, list[str]]:
         files = sorted(
-            (p for p in root.rglob("*") if p.is_file() and _wanted(p, dest)),
+            # A cloned repo is untrusted: a symlinked file in it can point anywhere on
+            # this machine (~/.ssh/..., another project's .env) and read_text() follows it.
+            (p for p in root.rglob("*") if p.is_file() and not p.is_symlink() and wanted(p, dest)),
             # When the budget runs out the tail is dropped, so order by value: README,
             # source, tests, docs, then config/CI noise.
-            key=lambda p: (_priority(p.relative_to(dest)), len(p.relative_to(dest).parts), str(p)),
+            key=lambda p: sort_key(p, dest),
         )
         parts = [f"--- repo: {url} ({len(files)} text files) ---"]
         used = len(parts[0])
@@ -227,27 +221,6 @@ class UrlContextFetcher:
         if skipped_large:
             warnings.append(f"url_repo_large_files_skipped:{url}:{skipped_large}")
         return "\n\n".join(parts), warnings
-
-
-def _wanted(path: Path, repo_root: Path) -> bool:
-    rel = path.relative_to(repo_root).parts
-    return (
-        not any(part in _SKIP_DIRS for part in rel[:-1])
-        and path.name not in _SKIP_FILES
-        and not path.name.lower().endswith(_SKIP_SUFFIXES)
-    )
-
-
-def _priority(rel: Path) -> int:
-    name = rel.name.lower()
-    if name.startswith("readme") and len(rel.parts) == 1:
-        return 0
-    is_test = any(part in ("tests", "test", "__tests__", "spec") for part in rel.parts[:-1])
-    if rel.suffix.lower() in _CODE_SUFFIXES:
-        return 2 if is_test else 1
-    if rel.suffix.lower() in _DOC_SUFFIXES:
-        return 3
-    return 4
 
 
 async def _default_resolve_host(host: str) -> list[str]:
