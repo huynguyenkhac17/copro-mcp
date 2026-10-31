@@ -88,6 +88,22 @@ async def test_inherited_task_type_keeps_its_profile_but_not_its_default_budget(
 
 
 @pytest.mark.asyncio
+async def test_explicit_none_from_the_server_still_inherits():
+    # 2026-10-31 live MCP test: server.py passes provider/task_type/json_schema even
+    # when unset, and the follow-up lost task_type (and its citation verification).
+    profile = TaskProfile(name="summarize", validators=["citations"])
+    provider = FakeProvider([_answer("a"), _answer("b")])
+    use_case = _use_case(provider, task_profiles={"summarize": profile})
+    first = await use_case.execute(DelegateTaskRequest(task="t1", task_type="summarize", provider="fake"))
+    second = await use_case.execute(DelegateTaskRequest(
+        task="t2", provider=None, task_type=None, json_schema=None, cross_check=None,
+        continuation_id=first.continuation_id,
+    ))
+    assert second.task_type == "summarize"
+    assert second.verification is not None
+
+
+@pytest.mark.asyncio
 async def test_unknown_continuation_is_a_clear_error():
     use_case = _use_case(FakeProvider())
     with pytest.raises(ConfigurationError, match="continuation_not_found"):

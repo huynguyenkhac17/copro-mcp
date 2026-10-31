@@ -361,13 +361,15 @@ class DelegateTaskUseCase:
                 "restart) - resend the task with its context/file_paths."
             )
         explicit = {name: getattr(request, name) for name in request.model_fields_set}
+        # An explicit None is "unset": the server passes provider/task_type/json_schema
+        # through even when the caller left them out.
         inherited = {
             name: value for name, value in conversation.settings.items()
-            if name not in explicit and value is not None
+            if explicit.get(name) is None and value is not None
         }
         # Rebuilt (not model_copy) so inherited fields count as explicitly set, and the
         # task profile does not override them with its own defaults.
-        return DelegateTaskRequest(**explicit, **inherited), conversation
+        return DelegateTaskRequest(**{**explicit, **inherited}), conversation
 
     def remember_turn(
         self, request: DelegateTaskRequest, context: str | None, answer: str

@@ -158,7 +158,7 @@ Errors (path traversal, file not found, too large, unreadable) are gracefully ha
 
 ### Follow-ups (`continuation_id`)
 
-Every answer carries a `continuation_id`. Pass it back with a new `task` to follow up without resending the context. This is useful after `output_truncated_at_max_tokens` (`task="continue"`), or to ask a second question about the same files. The server replays the conversation's context and earlier turns as a transcript, and older turns are dropped first when they do not fit `num_ctx`. Provider, budget, task_type, output_format and json_schema are inherited unless you set them. New `context`/`file_paths`/`urls` are added to the conversation.
+Every answer carries a `continuation_id`. Pass it back with a new `task` to follow up without resending the context. This is useful after `output_truncated_at_max_tokens` (`task="continue"`), or to ask a second question about the same files. The server replays the conversation's context and earlier turns as a transcript, and older turns are dropped first when they do not fit `num_ctx`. Provider, budget, task_type, output_format and json_schema are inherited unless you set them to another value (leaving one out, or passing null, keeps the inherited value; start a new conversation to drop a task_type). New `context`/`file_paths`/`urls` are added to the conversation.
 
 Conversations live in server memory (`conversations:` in `config/default.yaml`: 1 h TTL, 50 conversations, 20 turns). After expiry or a restart the call fails with `continuation_not_found`. A follow-up always runs on one provider, and it cannot be combined with `map_reduce`.
 
