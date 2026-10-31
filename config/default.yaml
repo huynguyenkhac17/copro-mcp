@@ -22,8 +22,8 @@ providers:
     # avoiding the need to manually update when specific model versions are deprecated.
     model: gemini-flash-latest
     # api_key_env: GEMINI_API_KEY
-    # Round-robin across 6 keys. GEMINI_API_KEY is a Windows user-level env var;
-    # the other five live in .env. load_dotenv runs with override=False so a real
+    # Round-robin across 9 keys. GEMINI_API_KEY is a Windows user-level env var;
+    # the other eight live in .env. load_dotenv runs with override=False so a real
     # env var always beats .env - never declare the same name twice, or one key
     # gets counted twice and the rotation is skewed.
     #
@@ -41,7 +41,10 @@ providers:
       - GEMINI_API_KEY_4
       - GEMINI_API_KEY_5
       - GEMINI_API_KEY_6
-    per_key_concurrency: 2  # 2 concurrent requests per API key (6 keys * 2 = 12 total capacity)
+      - GEMINI_API_KEY_7
+      - GEMINI_API_KEY_8
+      - GEMINI_API_KEY_9
+    per_key_concurrency: 2  # 2 concurrent requests per API key (9 keys * 2 = 18 total capacity)
 
   # First fallback tier for gemini, mirroring Deeplearn's flash -> flash-lite cascade:
   # a 503 "model overloaded" is per-MODEL, so the lite model on the very same keys
@@ -57,6 +60,9 @@ providers:
       - GEMINI_API_KEY_4
       - GEMINI_API_KEY_5
       - GEMINI_API_KEY_6
+      - GEMINI_API_KEY_7
+      - GEMINI_API_KEY_8
+      - GEMINI_API_KEY_9
     per_key_concurrency: 2
 
   # Groq speaks the OpenAI protocol, so it reuses the openai_compatible adapter -

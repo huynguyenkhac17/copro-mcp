@@ -36,9 +36,46 @@ def test_best_primary_metric_wins_among_providers_that_answer_enough():
     })
     table = routing_table(report, min_success=0.8)
     assert table["review"]["provider"] == "gemini-lite"
-    assert table["review"]["others"] == {"groq": 0.8}
+    assert table["review"]["others"] == {"groq": {"value": 0.8, "success": 1.0}}
+    assert table["review"]["paired_cases"] is None  # no per-case rows: summary means
     # gemini-lite extracts better but answered only half its cases.
     assert table["extract"]["provider"] == "groq"
+
+
+def _row(arm: str, case: str, task_type: str = "review", **scores) -> dict:
+    return {"id": case, "arm": arm, "task_type": task_type, "scores": scores}
+
+
+def test_providers_are_compared_on_the_cases_both_answered():
+    # 2026-10-31: groq skipped the large review (prompt over max_prompt_tokens) that
+    # gemini-lite answered at 0.50, so groq's summary mean (1.00) beat 0.90 unfairly.
+    report = _report({
+        "groq": {"review": _stats(0.8, 900, cases=5, bug_recall=1.0)},
+        "gemini-lite": {"review": _stats(1.0, 1800, cases=5, bug_recall=0.9)},
+    })
+    report["rows"] = [
+        *(_row(arm, f"small-{i}", success=1.0, bug_recall=1.0) for arm in ("groq", "gemini-lite") for i in range(4)),
+        _row("groq", "large", success=0.0),
+        _row("gemini-lite", "large", success=1.0, bug_recall=0.5),
+    ]
+    row = routing_table(report)["review"]
+    # Tied at 1.00 on the 4 shared cases; gemini-lite answered all 5.
+    assert row["provider"] == "gemini-lite"
+    assert (row["value"], row["paired_cases"]) == (1.0, 4)
+    assert row["others"] == {"groq": {"value": 1.0, "success": 0.8}}
+    render_routing_yaml(routing_table(report), report).encode("ascii")
+
+
+def test_paired_comparison_still_prefers_the_better_answers():
+    report = _report({
+        "a": {"extract": _stats(1.0, 500, field_accuracy=0.8)},
+        "b": {"extract": _stats(1.0, 900, field_accuracy=0.85)},
+    })
+    report["rows"] = [
+        _row("a", "c1", "extract", field_accuracy=1.0), _row("b", "c1", "extract", field_accuracy=1.0),
+        _row("a", "c2", "extract", field_accuracy=0.6), _row("b", "c2", "extract", field_accuracy=0.7),
+    ]
+    assert routing_table(report)["extract"]["provider"] == "b"
 
 
 def test_tie_goes_to_the_faster_provider():
