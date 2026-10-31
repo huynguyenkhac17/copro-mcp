@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel
 
-from llm_worker_pool.domain.file_selection import sort_key, wanted
+from llm_worker_pool.domain.file_selection import read_text_file, sort_key, wanted
 
 _GITHUB_REPO_RE = re.compile(
     r"^https?://(?:www\.)?github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+?)(?:\.git)?"
@@ -199,27 +199,33 @@ class UrlContextFetcher:
         )
         parts = [f"--- repo: {url} ({len(files)} text files) ---"]
         used = len(parts[0])
-        skipped_large = omitted = 0
+        skipped_large = omitted = lossy_count = 0
         for i, path in enumerate(files):
             if path.stat().st_size > self._repo_max_file_bytes:
                 skipped_large += 1
                 continue
             try:
-                content = path.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue  # binary or unreadable - not useful to a text model
+                decoded = read_text_file(path)
+            except OSError:
+                continue
+            if decoded is None:
+                continue  # binary - not useful to a text model
+            content, lossy = decoded
             block = f"--- file: {label}/{path.relative_to(dest).as_posix()} ---\n{content}"
             if used + len(block) > budget:
                 omitted = len(files) - i
                 break
             parts.append(block)
             used += len(block)
+            lossy_count += lossy
 
         warnings = []
         if omitted:
             warnings.append(f"url_repo_truncated:{url}:{omitted}_files_omitted")
         if skipped_large:
             warnings.append(f"url_repo_large_files_skipped:{url}:{skipped_large}")
+        if lossy_count:
+            warnings.append(f"url_repo_decoded_lossy:{url}:{lossy_count}")
         return "\n\n".join(parts), warnings
 
 

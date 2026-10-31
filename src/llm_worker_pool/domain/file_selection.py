@@ -60,6 +60,31 @@ def sort_key(path: Path, root: Path) -> tuple:
     return (priority(rel), len(rel.parts), str(rel).lower())
 
 
+BINARY_SNIFF_BYTES = 8192
+MAX_REPLACED_RATIO = 0.05
+
+
+def read_text_file(path: Path) -> tuple[str, bool] | None:
+    """(text, lossy), or None for a binary file. OSError propagates.
+
+    A strict utf-8 read drops the whole file over one bad byte: a file cut mid-
+    character by `head -c`, or one PowerShell 5.1 wrote in cp1252. So a file is
+    binary only if it has a NUL in the first few KB, or if decoding replaces more
+    than a few percent of it (a PDF's compressed streams can go 8KB without a NUL).
+    Anything else is sent, with undecodable bytes replaced and `lossy` set so the
+    caller can warn."""
+    data = path.read_bytes()
+    if b"\x00" in data[:BINARY_SNIFF_BYTES]:
+        return None
+    try:
+        return data.decode("utf-8-sig"), False
+    except UnicodeDecodeError:
+        text = data.decode("utf-8", errors="replace")
+    if text.count("�") > MAX_REPLACED_RATIO * len(text):
+        return None
+    return text, True
+
+
 def is_glob(raw: str) -> bool:
     return any(ch in GLOB_CHARS for ch in raw)
 

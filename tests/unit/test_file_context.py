@@ -203,3 +203,57 @@ def test_rag_embeddings_use_ollama_not_the_default_chat_provider():
     config = AppConfig()
     assert config.rag.embedding_endpoint == "http://localhost:11434"
     assert config.providers[config.default_provider].endpoint != config.rag.embedding_endpoint
+
+
+@pytest.mark.asyncio
+async def test_utf8_file_cut_mid_character_is_sent_with_lossy_warning(tmp_path: Path):
+    f = tmp_path / "diff.txt"
+    f.write_bytes(("diff line\n" * 5 + "kết quả đú").encode("utf-8")[:-1])  # `head -c` cut through "ú"
+
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    result = await resolver.aresolve([str(f)], query="task")
+
+    assert "kết quả đ" in result.text
+    assert f"file_decoded_lossy:{f.resolve()}" in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_cp1252_file_is_sent_with_lossy_warning(tmp_path: Path):
+    f = tmp_path / "report.md"
+    f.write_bytes(b"# Report\nscore \x97 good\n")  # PowerShell 5.1 em dash
+
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    result = await resolver.aresolve([str(f)], query="task")
+
+    assert "score � good" in result.text
+    assert any(w.startswith("file_decoded_lossy:") for w in result.warnings)
+    assert not any(w.startswith("file_unreadable") for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_utf8_bom_is_stripped_without_warning(tmp_path: Path):
+    f = tmp_path / "bom.txt"
+    f.write_bytes(b"\xef\xbb\xbfhello")
+
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    result = await resolver.aresolve([str(f)], query="task")
+
+    assert "﻿" not in result.text and "hello" in result.text
+    assert not any("lossy" in w for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_lossy_files_in_a_directory_are_counted_once(tmp_path: Path):
+    d = tmp_path / "proj"
+    d.mkdir()
+    (d / "a.txt").write_bytes(b"a \x97 dash in a normal sentence")
+    (d / "b.txt").write_bytes(b"b \x97 dash in a normal sentence")
+    (d / "c.txt").write_text("ok", encoding="utf-8")
+    (d / "img.bin").write_bytes(b"\x89PNG\x00\x00")
+
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    result = await resolver.aresolve([str(d)], query="task")
+
+    assert "a �" in result.text and "ok" in result.text and "PNG" not in result.text
+    assert f"file_decoded_lossy:{d} (2 files)" in result.warnings
+    assert f"file_unreadable:{d} (1 files)" in result.warnings

@@ -142,8 +142,8 @@ async def test_sensitive_file_deep_in_tree_is_denied(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_unreadable_files_in_a_tree_are_counted_not_listed(tmp_path: Path):
     _tree(tmp_path, {"ok.py": "OK"})
-    (tmp_path / "img1.png").write_bytes(b"\x89PNG\xff\xfe")
-    (tmp_path / "img2.png").write_bytes(b"\x89PNG\xff\xfe")
+    (tmp_path / "img1.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+    (tmp_path / "img2.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
     resolver = FileContextResolver(allowed_roots=[tmp_path])
 
     result = await resolver.aresolve([str(tmp_path)])
@@ -199,3 +199,17 @@ async def test_invalid_glob_is_a_warning_not_a_crash(tmp_path: Path):
     result = await resolver.aresolve([raw])
     assert result.text == ""
     assert result.warnings[0].startswith(f"file_invalid_glob:{raw}")
+
+
+def test_read_text_file_treats_mostly_undecodable_bytes_as_binary(tmp_path: Path):
+    """A PDF's compressed stream can run past the NUL sniff window; it must not be
+    sent as a page of replacement characters."""
+    from llm_worker_pool.domain.file_selection import read_text_file
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.7\nstream\n" + bytes(range(0x80, 0x100)) * 40)
+    note = tmp_path / "note.md"
+    note.write_bytes(b"long enough line of text \x97 then more text\n" * 3)
+
+    assert read_text_file(pdf) is None
+    assert read_text_file(note) == ("long enough line of text � then more text\n" * 3, True)

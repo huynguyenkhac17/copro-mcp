@@ -258,3 +258,21 @@ def test_repo_render_skips_symlinked_files(tmp_path):
 
     assert "print('hi')" in text
     assert "TOP_SECRET_OUTSIDE" not in text
+
+
+def test_repo_render_keeps_non_utf8_text_and_skips_binary(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hi')")
+    (repo / "notes.md").write_bytes(b"cp1252 \x97 dash in a normal sentence")
+    (repo / "cut.txt").write_bytes(("diff line\n" * 5 + "đú").encode("utf-8")[:-1])
+    (repo / "blob.dat").write_bytes(b"\x00\x01\x02 BINARYMARK")
+
+    text, warnings = UrlContextFetcher()._render_repo(
+        "https://github.com/o/r", "o/r", repo, repo, 100_000
+    )
+
+    assert "cp1252 � dash" in text
+    assert "--- file: o/r/cut.txt ---" in text
+    assert "BINARYMARK" not in text
+    assert "url_repo_decoded_lossy:https://github.com/o/r:2" in warnings

@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from llm_worker_pool.domain.file_selection import (
     glob_files,
     is_glob,
+    read_text_file,
     sort_key,
     split_glob,
     walk_files,
@@ -142,7 +143,14 @@ class FileContextResolver:
 
         # Files found by expanding a directory/glob are reported per item as counts:
         # one warning per skipped file would bury the answer under hundreds of lines.
-        skipped: dict[tuple[str, str], int] = {}
+        counted: dict[tuple[str, str], int] = {}
+
+        def report(reason: str, raw: str, origin: str | None) -> None:
+            if origin is None:
+                warnings.append(f"{reason}:{raw}")
+            else:
+                counted[(reason, origin)] = counted.get((reason, origin), 0) + 1
+
         for path, origin in files_to_read:
             raw = str(path)
             try:
@@ -158,16 +166,18 @@ class FileContextResolver:
                 reason = "file_budget_exceeded"
             else:
                 try:
-                    content = path.read_text(encoding="utf-8")
-                except (UnicodeDecodeError, OSError):
+                    decoded = read_text_file(path)
+                except OSError:
+                    decoded = None
+                if decoded is None:
                     reason = "file_unreadable"
             if reason is not None:
-                if origin is None:
-                    warnings.append(f"{reason}:{raw}")
-                else:
-                    skipped[(reason, origin)] = skipped.get((reason, origin), 0) + 1
+                report(reason, raw, origin)
                 continue
 
+            content, lossy = decoded
+            if lossy:
+                report("file_decoded_lossy", raw, origin)
             total_bytes += size
             if path.suffix.lower() == ".ipynb":
                 rendered = render_notebook(content)
@@ -176,7 +186,7 @@ class FileContextResolver:
                 else:
                     content = rendered
             texts_by_file[raw] = content
-        for (reason, origin), count in skipped.items():
+        for (reason, origin), count in counted.items():
             warnings.append(f"{reason}:{origin} ({count} files)")
 
         if not texts_by_file:
