@@ -166,10 +166,16 @@ async def test_no_store_means_no_continuation_id():
     assert result.success and result.continuation_id is None
 
 
-def test_store_caps_turns_and_expires():
-    store = ConversationStore(max_turns=2, ttl_seconds=0)
+def test_store_caps_turns_and_expires(monkeypatch):
+    # A fake clock: ttl 0 alone is flaky, Windows' monotonic clock ticks every ~15 ms.
+    from llm_worker_pool.infra import cache
+
+    now = [1000.0]
+    monkeypatch.setattr(cache.time, "monotonic", lambda: now[0])
+    store = ConversationStore(max_turns=2, ttl_seconds=60)
     cid = store.append(None, context=None, settings={}, task="a", answer="1")
-    assert store.get(cid) is None  # ttl 0: already expired
+    now[0] += 61
+    assert store.get(cid) is None
 
     store = ConversationStore(max_turns=2)
     cid = store.append(None, context=None, settings={}, task="a", answer="1")

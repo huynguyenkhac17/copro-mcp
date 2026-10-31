@@ -274,8 +274,12 @@ It is a separate process because MCP runs over stdio and often as several instan
 
 ## Evaluation (`worker-eval`)
 
+ragas pulls in `scikit-network`, which has no Python 3.14 wheel yet. So the eval gets its own venv on Python 3.12, and the server's `.venv` stays as it is. Without ragas, `--no-judge` still runs the deterministic metrics.
+
 ```bash
-uv pip install -e ".[eval]"
+uv venv .venv-eval --python 3.12
+uv pip install --python .venv-eval\Scripts\python.exe -e ".[eval,dev]"
+.venv-eval\Scripts\worker-eval --arm groq --arm gemini-lite --harness on   # judged run
 worker-eval --arm groq --arm gemini-lite --arm gemini --label baseline        # harness off
 worker-eval --arm groq --arm gemini-lite --harness on --compare evals/reports/<baseline>.json
 worker-eval --compare A.json B.json                                          # diff only
