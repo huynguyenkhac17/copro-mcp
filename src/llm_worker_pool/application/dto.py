@@ -36,6 +36,11 @@ class DelegateTaskRequest(BaseModel):
     cross_check: bool | None = None
     """Run on several providers and merge findings. None = the task profile decides
     (review: on)."""
+    continuation_id: str | None = None
+    """Follow up on an earlier answer (application/conversation_store.py): its context
+    and previous turns are replayed, and provider/budget/task_type/output_format/
+    json_schema are inherited unless set here. New context/file_paths/urls are added
+    to the conversation's context."""
 
 
 class DelegateTaskResult(BaseModel):
@@ -75,3 +80,7 @@ class DelegateTaskResult(BaseModel):
     cross_check: dict[str, Any] | None = None
     """Set when findings were merged from several providers: per-arm outcome, and how
     many findings more than one provider reported (each finding carries agreed_by)."""
+
+    continuation_id: str | None = None
+    """Pass back as `continuation_id` to follow up on this answer (e.g. task="continue"
+    after output_truncated_at_max_tokens) without resending the context."""

@@ -10,6 +10,12 @@ from __future__ import annotations
 import asyncio
 import time
 
+from llm_worker_pool.application.conversation_store import (
+    INHERITED_FIELDS,
+    Conversation,
+    ConversationStore,
+    render_history,
+)
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.config.settings import AppConfig
 from llm_worker_pool.domain.exceptions import ConfigurationError, LocalAIGatewayError
@@ -25,6 +31,7 @@ from llm_worker_pool.domain.models import (
 from llm_worker_pool.domain.output_parser import OutputParser
 from llm_worker_pool.domain.prompt_builder import PromptBuilder
 from llm_worker_pool.domain.rag_indexer import RagIndexer
+from llm_worker_pool.domain.token_estimate import CONTEXT_RESERVE_RATIO, estimate_tokens
 from llm_worker_pool.domain.validators import (
     CitationValidator,
     build_json_repair_prompt,
@@ -56,6 +63,7 @@ class DelegateTaskUseCase:
         task_profiles: dict[str, TaskProfile] | None = None,
         secret_scanner: SecretScanner | None = None,
         local_providers: list[str] | None = None,
+        conversation_store: ConversationStore | None = None,
     ) -> None:
         self._providers = providers
         self._default_provider = default_provider
@@ -73,16 +81,25 @@ class DelegateTaskUseCase:
         self._secret_scanner = secret_scanner
         """None = no redaction and no output scan (guardrails.redact_secrets: false)."""
         self._local_providers = frozenset(local_providers or ())
+        self._conversations = conversation_store
+        """None = no continuation_id support (results carry none)."""
 
     async def execute(
-        self, request: DelegateTaskRequest, *, allow_fallback: bool = True
+        self,
+        request: DelegateTaskRequest,
+        *,
+        allow_fallback: bool = True,
+        keep_conversation: bool = True,
     ) -> DelegateTaskResult:
         """`allow_fallback=False` pins the call to its provider (cross-check arms: an
-        arm answered by another tier would no longer be an independent opinion)."""
+        arm answered by another tier would no longer be an independent opinion).
+        `keep_conversation=False` answers without recording a turn (internal calls
+        whose answer the caller never sees as such, e.g. cross-check arms)."""
+        request, conversation = self.resume_conversation(request)
         request, task_profile = self.apply_task_profile(request)
         profile = self.resolve_budget(request.budget)
 
-        provider_name = request.provider or self._budget_default_provider(request.budget)
+        provider_name = request.provider or self._routed_provider(request.budget, task_profile)
         provider = self._providers.get(provider_name)
         if not provider:
             available = ", ".join(sorted(self._providers))
@@ -91,9 +108,29 @@ class DelegateTaskUseCase:
             )
         chain = self._fallback_chain(provider_name, request) if allow_fallback else [provider_name]
 
-        combined_context, file_warnings = await self.resolve_context(request)
+        stored_context = conversation.context if conversation is not None else None
+        combined_context, file_warnings = await self.resolve_context(
+            request, reserved_tokens=estimate_tokens(stored_context or "")
+        )
+        task = request.task
+        history_warnings: list[str] = []
+        if conversation is not None:
+            if request.cross_check:
+                history_warnings.append("cross_check_skipped:follow_up_runs_on_one_provider")
+            if combined_context and stored_context and combined_context in stored_context:
+                combined_context = None  # the caller resent what the conversation already has
+            combined_context = "\n\n".join(
+                part for part in (stored_context, combined_context) if part
+            ) or None
+            room = self._context_window_tokens(request.budget) - estimate_tokens(combined_context or "")
+            task, dropped = render_history(conversation.turns, request.task, max(room, 0))
+            if dropped:
+                history_warnings.append(
+                    f"continuation_history_trimmed:{dropped} oldest turns left out to fit num_ctx"
+                )
+        unredacted_context = combined_context  # what the conversation keeps, see conversation_store
         task, combined_context, redaction_warnings = self._guard_input(
-            request.task, combined_context, chain
+            task, combined_context, chain
         )
         guardrail_actions = [
             w for w in file_warnings if w.startswith("file_denied_sensitive:")
@@ -184,6 +221,8 @@ class DelegateTaskUseCase:
                 error=error if len(failures) == 1 else "All providers failed: " + "; ".join(failures),
                 task_type=request.task_type,
                 guardrail_actions=guardrail_actions,
+                # Unchanged conversation: the caller can retry the same follow-up.
+                continuation_id=request.continuation_id,
             )
 
         retried_without_thinking = False
@@ -213,7 +252,9 @@ class DelegateTaskUseCase:
             except (TimeoutError, LocalAIGatewayError):
                 pass  # keep the original (empty) response, fall through to the warning below
 
-        warnings = [*file_warnings, *redaction_warnings, *built.warnings, *quota_skips]
+        warnings = [
+            *file_warnings, *history_warnings, *redaction_warnings, *built.warnings, *quota_skips
+        ]
         if failures:
             warnings.append(
                 f"fallback_used:{provider.provider_name} after " + "; ".join(failures)
@@ -299,6 +340,48 @@ class DelegateTaskUseCase:
             task_type=request.task_type,
             guardrail_actions=guardrail_actions,
             verification=verification,
+            continuation_id=(
+                self.remember_turn(request, unredacted_context, response.raw_text)
+                if keep_conversation else None
+            ),
+        )
+
+    def resume_conversation(
+        self, request: DelegateTaskRequest
+    ) -> tuple[DelegateTaskRequest, Conversation | None]:
+        """For a follow-up: the stored conversation, and the request with the
+        conversation's settings filled in wherever the caller left them unset."""
+        if request.continuation_id is None:
+            return request, None
+        conversation = self._conversations.get(request.continuation_id) if self._conversations else None
+        if conversation is None:
+            raise ConfigurationError(
+                f"continuation_not_found: '{request.continuation_id}' is unknown or expired "
+                "(conversations live in server memory for a limited time and are lost on "
+                "restart) - resend the task with its context/file_paths."
+            )
+        explicit = {name: getattr(request, name) for name in request.model_fields_set}
+        inherited = {
+            name: value for name, value in conversation.settings.items()
+            if name not in explicit and value is not None
+        }
+        # Rebuilt (not model_copy) so inherited fields count as explicitly set, and the
+        # task profile does not override them with its own defaults.
+        return DelegateTaskRequest(**explicit, **inherited), conversation
+
+    def remember_turn(
+        self, request: DelegateTaskRequest, context: str | None, answer: str
+    ) -> str | None:
+        """Record an answered turn; returns the id to continue from (None when
+        conversations are off)."""
+        if self._conversations is None:
+            return None
+        return self._conversations.append(
+            request.continuation_id,
+            context=context,
+            settings={name: getattr(request, name) for name in INHERITED_FIELDS},
+            task=request.task,
+            answer=answer,
         )
 
     def apply_task_profile(
@@ -416,10 +499,13 @@ class DelegateTaskUseCase:
         files = split_context_files(context)
         return CitationValidator(files).validate(extract_citations(raw_text, content))
 
-    async def resolve_context(self, request: DelegateTaskRequest) -> tuple[str | None, list[str]]:
+    async def resolve_context(
+        self, request: DelegateTaskRequest, *, reserved_tokens: int = 0
+    ) -> tuple[str | None, list[str]]:
         """The context text exactly as it will be sent (context + file_paths + urls),
         plus the warnings raised while gathering it. Public so `worker-eval` can hand
-        the very same text to RAGAS as retrieved_contexts."""
+        the very same text to RAGAS as retrieved_contexts. `reserved_tokens`: window
+        already taken by other context (a conversation's earlier context)."""
         return await resolve_request_context(
             self._file_context_resolver,
             context=request.context,
@@ -428,7 +514,14 @@ class DelegateTaskUseCase:
             rag_indexer=self._rag_indexer,
             urls=request.urls,
             url_fetcher=self._url_fetcher,
+            # RAG replaces whole files with top_k chunks, so only use it when the files
+            # would not fit the budget's context window anyway.
+            rag_min_tokens=self._context_window_tokens(request.budget) - reserved_tokens,
         )
+
+    def _context_window_tokens(self, budget: str) -> int:
+        """Tokens of context the budget's num_ctx leaves after the prompt/answer reserve."""
+        return int(self.resolve_budget(budget).options.num_ctx * (1 - CONTEXT_RESERVE_RATIO))
 
     @property
     def url_fetcher(self) -> UrlContextFetcher | None:
@@ -475,6 +568,14 @@ class DelegateTaskUseCase:
         if is_fallback and effort and options.reasoning_effort in self._HEAVY_REASONING:
             return options.model_copy(update={"reasoning_effort": effort})
         return options
+
+    def _routed_provider(self, budget: str, task_profile: TaskProfile | None) -> str:
+        """Provider when the request names none: the task type's measured pick if that
+        provider is up, else the budget's."""
+        preferred = task_profile.preferred_provider if task_profile else None
+        if preferred and preferred in self._providers:
+            return preferred
+        return self._budget_default_provider(budget)
 
     def _budget_default_provider(self, budget: str) -> str:
         """Provider used when the request names none: the budget's own pick if that

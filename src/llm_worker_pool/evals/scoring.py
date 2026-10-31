@@ -65,6 +65,11 @@ def score_case(case: EvalCase, result: DelegateTaskResult, context: str | None) 
         "fallback": 1.0 if "fallback_used" in codes else 0.0,
         "truncated": 1.0 if result.truncated else 0.0,
     }
+    if not result.success:
+        # No answer says nothing about quality. Scoring a 429 as bug_recall 0 is what
+        # made gemini-lite look like it regressed under the harness (2026-10-30: 2 of
+        # its 4 review cases were quota errors); availability is `success`.
+        return scores
 
     if case.output_format == "json":
         parsed = result.success and "json_parse_failed" not in codes

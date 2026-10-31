@@ -180,8 +180,21 @@ jobs:
   ttl_seconds: 3600
   max_entries: 1000
 
-rag:
+conversations:
+  # continuation_id follow-ups. Kept in server memory only: lost on restart. Each
+  # entry holds its whole context, so keep max_entries modest.
   enabled: true
+  ttl_seconds: 3600
+  max_entries: 50
+  # Older turns are dropped first; history is also trimmed to the budget's num_ctx.
+  max_turns: 20
+
+rag:
+  # Only used when the full text of the files would not fit the budget's num_ctx
+  # (minus the reserve for prompt/answer); below that the model gets every file
+  # verbatim, which beats top_k chunks for review. Needs a local Ollama.
+  enabled: true
+  embedding_endpoint: http://localhost:11434
   embedding_model: nomic-embed-text
   chunk_size_tokens: 256
   overlap_tokens: 32

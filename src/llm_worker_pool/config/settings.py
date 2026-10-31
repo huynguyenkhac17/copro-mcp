@@ -122,8 +122,19 @@ class JobsConfig(BaseModel):
     max_entries: int = 1000
 
 
+class ConversationsConfig(BaseModel):
+    enabled: bool = True
+    ttl_seconds: float = 3600
+    # Each conversation holds its whole context (up to file_access.max_total_bytes).
+    max_entries: int = 50
+    max_turns: int = 20
+
+
 class RagConfig(BaseModel):
     enabled: bool = False
+    # Ollama's native API (/api/embed), not a chat provider's endpoint: it used to be
+    # taken from default_provider, which became gemini, so every RAG call 404'd.
+    embedding_endpoint: str = "http://localhost:11434"
     embedding_model: str = "nomic-embed-text"
     chunk_size_tokens: int = 256
     overlap_tokens: int = 32
@@ -242,6 +253,7 @@ class AppConfig(BaseSettings):
     url_fetch: UrlFetchConfig = Field(default_factory=UrlFetchConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     jobs: JobsConfig = Field(default_factory=JobsConfig)
+    conversations: ConversationsConfig = Field(default_factory=ConversationsConfig)
     rag: RagConfig = Field(default_factory=RagConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     quota: QuotaConfig = Field(default_factory=QuotaConfig)
@@ -308,11 +320,32 @@ def load_task_profiles(path: Path | None = None) -> dict[str, TaskProfile]:
     with open(resolved, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
+    # Measured routing (worker-eval --emit-routing) fills preferred_provider where the
+    # profile itself sets none - a hand-written choice always wins.
+    routing = load_eval_routing(resolved.with_name(ROUTING_FROM_EVAL_FILENAME))
     profiles: dict[str, TaskProfile] = {}
     for name, body in (raw.get("task_types") or {}).items():
+        body = dict(body or {})
+        if body.get("preferred_provider") is None and name in routing:
+            body["preferred_provider"] = routing[name]
         try:
-            profiles[name] = TaskProfile(name=name, **(body or {}))
+            profiles[name] = TaskProfile(name=name, **body)
         except Exception as exc:  # noqa: BLE001 - wrap in domain error with context
             raise ConfigurationError(f"Task profile '{name}' is misconfigured: {exc}") from exc
 
     return profiles
+
+
+ROUTING_FROM_EVAL_FILENAME = "routing_from_eval.yaml"
+
+
+def load_eval_routing(path: Path) -> dict[str, str]:
+    """{task_type: provider} from a routing file written by worker-eval; {} if absent."""
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    table = raw.get("preferred_provider") or {}
+    if not isinstance(table, dict):
+        raise ConfigurationError(f"{path}: preferred_provider must be a mapping")
+    return {str(k): str(v) for k, v in table.items() if v}

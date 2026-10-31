@@ -8,6 +8,8 @@ request exactly as a caller without task_type would - that is the baseline.
     worker-eval --arm groq --arm gemini-lite                 # baseline
     worker-eval --arm groq --harness on --compare evals/reports/<baseline>.json
     worker-eval --compare A.json B.json                      # diff two reports only
+    worker-eval --arm groq --arm gemini-lite --harness on --emit-routing   # measured routing
+    worker-eval --from-report NEW.json --gate BASELINE.json  # exit 1 on a quality drop
 
 Outputs evals/reports/<timestamp>.{json,md} and ~/.llm_worker_pool/eval_latest.json
 (read by `worker-metrics` as llm_worker_eval_score).
@@ -28,7 +30,9 @@ from typing import Any
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.config.settings import AppConfig
 from llm_worker_pool.domain.validators import split_context_files
+from llm_worker_pool.config.settings import ROUTING_FROM_EVAL_FILENAME
 from llm_worker_pool.evals.dataset import EvalCase, load_cases
+from llm_worker_pool.evals.routing import gate, render_routing_yaml, routing_table
 from llm_worker_pool.evals.scoring import mean, percentile, score_case
 from llm_worker_pool.infra.event_log import configured_path, default_eval_latest_path
 
@@ -366,8 +370,26 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "evals" / "reports")
     parser.add_argument("--compare", action="append", default=[],
                         help="baseline report .json; given twice with no --arm, just diff the two")
+    parser.add_argument("--from-report", type=Path, default=None,
+                        help="use this report instead of running (for --emit-routing / --gate)")
+    parser.add_argument("--emit-routing", nargs="?", type=Path, const=REPO_ROOT / "config" / ROUTING_FROM_EVAL_FILENAME,
+                        default=None, help="write the measured provider per task type "
+                        "(default config/routing_from_eval.yaml)")
+    parser.add_argument("--min-success", type=float, default=0.8,
+                        help="share of cases a provider must answer to be routed to")
+    parser.add_argument("--gate", type=Path, default=None,
+                        help="baseline report: exit 1 if a task type's primary metric dropped")
+    parser.add_argument("--gate-tolerance", type=float, default=0.05)
     args = parser.parse_args(argv)
     args.dataset = args.dataset or [str(REPO_ROOT / "evals" / "datasets")]
+
+    if args.from_report is not None:
+        if args.arm:
+            parser.error("--from-report replaces a run; drop --arm")
+        if args.emit_routing is None and args.gate is None:
+            parser.error("--from-report needs --emit-routing and/or --gate")
+        report = json.loads(args.from_report.read_text(encoding="utf-8"))
+        sys.exit(_decide(report, args))
 
     if len(args.compare) == 2 and not args.arm:
         old, new = (json.loads(Path(p).read_text(encoding="utf-8")) for p in args.compare)
@@ -387,6 +409,35 @@ def main(argv: list[str] | None = None) -> None:
         compare_md = render_compare(old, report)
         json_path.with_name(json_path.stem + "-compare.md").write_text(compare_md, encoding="utf-8")
         print(compare_md)
+    if args.emit_routing is not None or args.gate is not None:
+        sys.exit(_decide(report, args))
+
+
+def _decide(report: dict[str, Any], args: argparse.Namespace) -> int:
+    """--emit-routing and --gate on a report; returns the process exit code."""
+    code = 0
+    if args.emit_routing is not None:
+        table = routing_table(report, min_success=args.min_success)
+        if table:
+            args.emit_routing.parent.mkdir(parents=True, exist_ok=True)
+            args.emit_routing.write_text(render_routing_yaml(table, report), encoding="ascii")
+            print(f"routing: {args.emit_routing}", file=sys.stderr)
+            for task_type, row in sorted(table.items()):
+                print(f"  {task_type}: {row['provider']} ({row['metric']}={row['value']:.2f})", file=sys.stderr)
+        else:
+            print("routing: no provider qualified for any task type; nothing written", file=sys.stderr)
+    if args.gate is not None:
+        baseline = json.loads(args.gate.read_text(encoding="utf-8"))
+        regressions, notes = gate(baseline, report, tolerance=args.gate_tolerance)
+        for note in notes:
+            print(f"gate note: {note}", file=sys.stderr)
+        for line in regressions:
+            print(f"gate REGRESSION: {line}", file=sys.stderr)
+        if regressions:
+            code = 1
+        else:
+            print("gate: ok", file=sys.stderr)
+    return code
 
 
 if __name__ == "__main__":

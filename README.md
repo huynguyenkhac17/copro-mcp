@@ -152,7 +152,15 @@ file_access:
   max_total_bytes: 800000             # Limit per invocation
 ```
 
-Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `DelegateTaskResult.warnings`.
+An item may be a file, a directory (walked recursively) or a glob such as `D:/repo/src/**/*.py`. While walking, `.git`, `node_modules`, `.venv`, build output and lockfiles are skipped, and symlinked or junction directories are never entered. Files are taken most useful first (README, source, tests, docs, then the rest), so when the byte budget runs out the noise is what gets dropped. `max_dir_files`, `max_dir_depth` and `max_dir_entries` cap each item.
+
+Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `DelegateTaskResult.warnings`. Files skipped inside a directory or glob are reported as one count per item.
+
+### Follow-ups (`continuation_id`)
+
+Every answer carries a `continuation_id`. Pass it back with a new `task` to follow up without resending the context. This is useful after `output_truncated_at_max_tokens` (`task="continue"`), or to ask a second question about the same files. The server replays the conversation's context and earlier turns as a transcript, and older turns are dropped first when they do not fit `num_ctx`. Provider, budget, task_type, output_format and json_schema are inherited unless you set them. New `context`/`file_paths`/`urls` are added to the conversation.
+
+Conversations live in server memory (`conversations:` in `config/default.yaml`: 1 h TTL, 50 conversations, 20 turns). After expiry or a restart the call fails with `continuation_not_found`. A follow-up always runs on one provider, and it cannot be combined with `map_reduce`.
 
 ### Guardrails
 
@@ -178,7 +186,7 @@ For example, `review` returns `findings: [{file, line, severity, claim, evidence
 
 ### Local RAG
 
-If `file_paths` points to a directory and `rag.enabled` is `true`, the server will embed the directory contents using a local embedding model (via Ollama) and use a local FAISS vector store to inject only the most relevant text chunks into the context based on the current `task`. This avoids flooding the context window with entire large directories.
+If `file_paths` includes a directory or glob, `rag.enabled` is `true`, and the files' full text would not fit the budget's context window (`num_ctx` minus the 25% reserve), the server embeds them with `rag.embedding_model` via the Ollama at `rag.embedding_endpoint`. A local FAISS store then picks the `top_k` chunks most relevant to the `task`. Below that size the model gets every file verbatim, which is what review needs. If Ollama is unreachable, the call reports `rag_indexing_failed` and falls back to the full text.
 
 ### Response Caching
 
@@ -271,6 +279,8 @@ uv pip install -e ".[eval]"
 worker-eval --arm groq --arm gemini-lite --arm gemini --label baseline        # harness off
 worker-eval --arm groq --arm gemini-lite --harness on --compare evals/reports/<baseline>.json
 worker-eval --compare A.json B.json                                          # diff only
+worker-eval --arm groq --arm gemini-lite --harness on --emit-routing         # measured routing
+worker-eval --from-report NEW.json --gate BASELINE.json                      # regression gate
 ```
 
 - **Dataset.** Cases live in `evals/datasets/*.jsonl` (fixtures in `evals/datasets/fixtures/`). Fields: `id, task, task_type, budget, file_paths|context, output_format, json_schema, reference, expected_findings, expected_fields, must_contain, must_not_contain, expect_file_denied`.
@@ -282,6 +292,9 @@ worker-eval --compare A.json B.json                                          # d
   - `answer_relevancy`: needs Ollama `nomic-embed-text` at `eval.embedding_endpoint`, and is skipped when that is unreachable.
 - **Judge.** The judge is `eval.judge_provider` (gemini-lite by default, since gemini-flash was too overloaded to judge on 2026-10-30; override with `--judge-provider`). It is called through the openai client with key rotation, a circuit breaker and a bounded timeout. If the judge's model is also one of the arms, the report flags the self-preference risk.
 - **Deterministic metrics.** `bug_recall` (cited file plus a line within ±3), `citation_valid_rate`, `json_valid`/`json_schema_valid`, `field_accuracy`, `must_contain`, `no_leak`, `file_denied`, fallback/truncation rates, latency p50/p95 and tokens.
+- **Failed calls** (429, timeout) count only towards `success`; quality metrics are averaged over answered cases, so a quota storm does not read as a quality drop.
+- **Routing from eval.** `--emit-routing` writes `config/routing_from_eval.yaml`. For each task type it picks the provider with the best primary metric (review: `bug_recall`, extract/classify: `field_accuracy`, summarize/explain: `faithfulness` or `must_contain`, translate: `factual_correctness`). Only providers that answered at least `--min-success` (0.8) of their cases qualify. Each pick carries its evidence as a comment. The file fills `preferred_provider` in the task profiles, and a value written in `task_profiles.yaml` wins. Review the file before committing it.
+- **Regression gate.** `--gate BASELINE.json` exits 1 when an arm's primary metric for a task type drops by more than `--gate-tolerance` (0.05). A drop in `success` is only printed as a note. `--from-report` applies `--emit-routing`/`--gate` to an existing report without calling any model.
 - **Output.** Reports go to `evals/reports/<timestamp>[-label].{json,md}`. Scores are also merged into `~/.llm_worker_pool/eval_latest.json` for the exporter, so a `--case`/`--task-type` subset run only replaces what it measured.
 
 ### `/worker` slash command in Claude Code

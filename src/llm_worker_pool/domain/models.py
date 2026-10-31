@@ -81,6 +81,10 @@ class TaskProfile(BaseModel):
     cross_check_providers: list[str] = Field(default_factory=list)
     """Providers for cross-checking, ideally from different vendors so their mistakes
     differ. Unavailable ones are dropped; fewer than two left = a normal single call."""
+    preferred_provider: str | None = None
+    """First provider for this kind of work when the request names none (its own
+    fallback chain follows); beats the budget's provider. Set here, or measured by
+    `worker-eval --emit-routing` into config/routing_from_eval.yaml."""
 
 
 class ProviderResponse(BaseModel):

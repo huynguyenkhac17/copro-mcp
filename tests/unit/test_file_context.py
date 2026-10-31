@@ -171,3 +171,35 @@ async def test_malformed_notebook_falls_back_to_raw_text_with_warning(tmp_path: 
 async def test_drive_root_normalization():
     resolver = FileContextResolver(allowed_roots=[Path("D:")])
     assert resolver._allowed_roots[0] == Path("D:/").resolve()
+
+
+class _FakeRag:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def index_and_search(self, texts_by_file, query):
+        self.calls += 1
+        return "RAG_CHUNKS"
+
+
+@pytest.mark.asyncio
+async def test_rag_only_when_files_exceed_the_context_window(tmp_path: Path):
+    # RAG swaps whole files for top_k chunks; when everything fits the budget's
+    # window the model must get the files verbatim (review needs all the code).
+    (tmp_path / "a.py").write_text("x" * 400)  # ~100 tokens
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    rag = _FakeRag()
+
+    fits = await resolver.aresolve([str(tmp_path)], query="q", rag_indexer=rag, rag_min_tokens=1000)
+    assert "x" * 400 in fits.text and rag.calls == 0
+
+    too_big = await resolver.aresolve([str(tmp_path)], query="q", rag_indexer=rag, rag_min_tokens=50)
+    assert too_big.text == "RAG_CHUNKS" and rag.calls == 1
+
+
+def test_rag_embeddings_use_ollama_not_the_default_chat_provider():
+    from llm_worker_pool.config.settings import AppConfig
+
+    config = AppConfig()
+    assert config.rag.embedding_endpoint == "http://localhost:11434"
+    assert config.providers[config.default_provider].endpoint != config.rag.embedding_endpoint

@@ -17,6 +17,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from llm_worker_pool import __version__
+from llm_worker_pool.application.conversation_store import ConversationStore
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.application.job_manager import JobManager
@@ -86,11 +87,9 @@ def _build_use_case(
     rag_indexer = None
     if config.rag.enabled:
         chunker = Chunker()
-        # Fallback to default endpoint logic from config.providers if needed
-        # Assuming the Ollama instance is local and uses default port
-        default_ollama = config.providers.get(config.default_provider)
-        endpoint = default_ollama.endpoint if default_ollama else "http://localhost:11434"
-        embed_provider = OllamaEmbeddingProvider(endpoint=endpoint, model=config.rag.embedding_model)
+        embed_provider = OllamaEmbeddingProvider(
+            endpoint=config.rag.embedding_endpoint, model=config.rag.embedding_model
+        )
         rag_indexer = RagIndexer(config=config.rag, embedding_provider=embed_provider, chunker=chunker)
     
     use_case = DelegateTaskUseCase(
@@ -107,6 +106,14 @@ def _build_use_case(
             SecretScanner(guardrails.extra_patterns) if guardrails.redact_secrets else None
         ),
         local_providers=guardrails.local_providers,
+        conversation_store=(
+            ConversationStore(
+                max_entries=config.conversations.max_entries,
+                ttl_seconds=config.conversations.ttl_seconds,
+                max_turns=config.conversations.max_turns,
+            )
+            if config.conversations.enabled else None
+        ),
     )
     
     return use_case, file_context_resolver
@@ -209,7 +216,12 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             "Use async_mode=true for tasks expected to take a long time to prevent timeout; check "
             "status later via check_job_status, do not poll in a tight loop. "
             "Use map_reduce=true to chunk very large context and process it in multiple calls - only "
-            "for tasks tolerant of imprecision, never for exact/numeric extraction."
+            "for tasks tolerant of imprecision, never for exact/numeric extraction. "
+            "Every answer carries a `continuation_id`: pass it back with a new `task` to follow "
+            "up without resending context/file_paths (e.g. task='continue' after "
+            "output_truncated_at_max_tokens, or 'now check X too'). The follow-up keeps the "
+            "earlier context, turns and provider/budget/task_type unless you set them; it "
+            "expires after a while and on server restart (continuation_not_found)."
         ),
     )
     async def delegate_task(
@@ -225,6 +237,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
         map_reduce: bool = False,
         task_type: str | None = None,
         cross_check: bool | None = None,
+        continuation_id: str | None = None,
     ) -> DelegateTaskResult:
         try:
             fields: dict[str, Any] = {
@@ -237,6 +250,8 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                 "task_type": task_type,
                 "cross_check": cross_check,
             }
+            if continuation_id is not None:
+                fields["continuation_id"] = continuation_id
             # Only forward what the caller actually set, so a task type's own
             # default budget/output format can apply (DelegateTaskRequest tracks
             # explicitly-set fields). Without task_type the DTO defaults are the
@@ -252,11 +267,22 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
         try:
             # Fail an unknown task_type now rather than inside an async job, and report
             # the budget the task type actually picks.
-            effective_budget = use_case.apply_task_profile(request)[0].budget
+            effective_budget = use_case.apply_task_profile(
+                use_case.resume_conversation(request)[0]
+            )[0].budget
         except LocalAIGatewayError as exc:
             return DelegateTaskResult(success=False, budget_used=request.budget, error=str(exc))
 
-        if map_reduce:
+        if request.continuation_id and map_reduce:
+            return DelegateTaskResult(
+                success=False,
+                budget_used=effective_budget,
+                error="continuation_id cannot be combined with map_reduce",
+            )
+        if request.continuation_id:
+            # Follow-ups are conversational: one provider, no cross-check.
+            coro = use_case.execute(request)
+        elif map_reduce:
             coro = map_reduce_orchestrator.execute(request)
         elif cross_check_orchestrator.wants_cross_check(request):
             coro = cross_check_orchestrator.execute(request)

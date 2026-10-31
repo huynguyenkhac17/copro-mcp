@@ -192,3 +192,23 @@ async def test_single_available_provider_degrades_to_one_call(tmp_path):
 async def test_other_task_types_do_not_cross_check(tmp_path):
     orch, _ = _setup(tmp_path, {"lite": ScriptedProvider("lite")})
     assert not orch.wants_cross_check(DelegateTaskRequest(task="r"))
+
+
+@pytest.mark.asyncio
+async def test_merged_review_is_one_conversation_arms_are_not(tmp_path):
+    from llm_worker_pool.application.conversation_store import ConversationStore
+
+    full = str(tmp_path / "orders.py")
+    groq = ScriptedProvider("groq", {full: [_f(full, 3, "total = price * qty")]})
+    lite = ScriptedProvider("lite", {full: [_f(full, 3, "total = price * qty")]})
+    orch, paths = _setup(tmp_path, {"groq": groq, "lite": lite})
+    store = ConversationStore()
+    orch._use_case._conversations = store
+
+    result = await orch.execute(DelegateTaskRequest(task="review", task_type="review", file_paths=paths))
+
+    assert result.continuation_id
+    conversation = store.get(result.continuation_id)
+    assert conversation.turns[0].answer == result.raw_text
+    assert "total = price * qty" in conversation.context
+    assert len(store._cache._store) == 1

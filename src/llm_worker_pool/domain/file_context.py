@@ -26,6 +26,7 @@ from llm_worker_pool.domain.file_selection import (
     walk_files,
 )
 from llm_worker_pool.domain.guardrails import PathDenyList
+from llm_worker_pool.domain.token_estimate import estimate_tokens
 
 
 class ResolvedFileContext(BaseModel):
@@ -65,6 +66,7 @@ class FileContextResolver:
         paths: list[str], 
         query: str | None = None,
         rag_indexer: Any | None = None,
+        rag_min_tokens: int | None = None,
     ) -> ResolvedFileContext:
         if not self._allowed_roots:
             return ResolvedFileContext(
@@ -180,7 +182,11 @@ class FileContextResolver:
         if not texts_by_file:
             return ResolvedFileContext(text="", warnings=warnings)
 
-        if rag_indexer and query and self._has_directory(paths):
+        full_tokens = sum(estimate_tokens(content) for content in texts_by_file.values())
+        if (
+            rag_indexer and query and self._has_directory(paths)
+            and (rag_min_tokens is None or full_tokens > rag_min_tokens)
+        ):
             try:
                 text = await rag_indexer.index_and_search(texts_by_file, query)
                 return ResolvedFileContext(text=text, warnings=warnings)
@@ -299,6 +305,7 @@ async def resolve_request_context(
     rag_indexer: Any | None = None,
     urls: list[str] | None = None,
     url_fetcher: Any | None = None,
+    rag_min_tokens: int | None = None,
 ) -> tuple[str | None, list[str]]:
     """Shared by DelegateTaskUseCase and MapReduceOrchestrator so both build the
     combined (context + file_paths + urls) text the exact same way."""
@@ -309,7 +316,9 @@ async def resolve_request_context(
     parts: list[str | None] = [context]
     warnings: list[str] = []
     if file_paths:
-        file_result = await resolver.aresolve(file_paths, query=query, rag_indexer=rag_indexer)
+        file_result = await resolver.aresolve(
+            file_paths, query=query, rag_indexer=rag_indexer, rag_min_tokens=rag_min_tokens
+        )
         parts.append(file_result.text)
         warnings.extend(file_result.warnings)
     if urls:

@@ -78,7 +78,10 @@ class CrossCheckOrchestrator:
             base.model_copy(update={"provider": arm, "context": ctx}) for ctx in batches
         ]
         results = await asyncio.gather(
-            *(self._use_case.execute(r, allow_fallback=False) for r in requests),
+            *(
+                self._use_case.execute(r, allow_fallback=False, keep_conversation=False)
+                for r in requests
+            ),
             return_exceptions=True,
         )
 
@@ -223,4 +226,6 @@ class CrossCheckOrchestrator:
                 "findings_total": len(merged),
                 "findings_agreed": agreed,
             },
+            # A follow-up continues from the merged findings, on a single provider.
+            continuation_id=self._use_case.remember_turn(request, context, raw_text),
         )
