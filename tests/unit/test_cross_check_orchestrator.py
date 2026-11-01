@@ -9,7 +9,7 @@ from llm_worker_pool.application.cross_check_orchestrator import CrossCheckOrche
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest
 from llm_worker_pool.config.settings import AppConfig, RetryConfig
-from llm_worker_pool.domain.exceptions import ProviderUnavailableError
+from llm_worker_pool.domain.exceptions import ProviderUnavailableError, RequestTooLargeError
 from llm_worker_pool.domain.file_context import FileContextResolver
 from llm_worker_pool.domain.models import (
     BudgetProfile,
@@ -25,10 +25,12 @@ _SCHEMA = {"type": "object", "required": ["findings"], "properties": {"findings"
 class ScriptedProvider:
     """Answers with findings for whichever files appear in the prompt."""
 
-    def __init__(self, name: str, findings_by_file: dict[str, list[dict]] | None = None, error: Exception | None = None):
+    def __init__(self, name: str, findings_by_file: dict[str, list[dict]] | None = None, error: Exception | None = None,
+                 max_prompt_tokens: int | None = None):
         self._name = name
         self._findings = findings_by_file or {}
         self._error = error
+        self._max_prompt_tokens = max_prompt_tokens  # what OpenAICompatibleProvider refuses
         self.prompts: list[str] = []
 
     @property
@@ -40,6 +42,8 @@ class ScriptedProvider:
         return f"{self._name}-model"
 
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
+        if self._max_prompt_tokens is not None and len(prompt) // 4 > self._max_prompt_tokens:
+            raise RequestTooLargeError(f"{self._name}: prompt exceeds max_prompt_tokens; skipped")
         self.prompts.append(prompt)
         if self._error:
             raise self._error
@@ -59,7 +63,7 @@ class ScriptedProvider:
 
 
 def _setup(tmp_path, providers: dict[str, ScriptedProvider], *, groq_limit: int | None = None,
-           arms=("groq", "lite"), files: dict[str, str] | None = None):
+           arms=("groq", "lite"), files: dict[str, str] | None = None, deny_list=None):
     config = AppConfig(retry=RetryConfig(max_attempts=1, backoff_base_seconds=0.01), timeout_seconds=5.0)
     config.budget_providers = {}
     config.budget_fallbacks = {}
@@ -79,7 +83,7 @@ def _setup(tmp_path, providers: dict[str, ScriptedProvider], *, groq_limit: int 
             "L3": BudgetProfile(name="L3", description="", options=GenerationOptions(num_ctx=65536)),
         },
         invocation_logger=InvocationLogger(logging.getLogger("test.invocation")),
-        file_context_resolver=FileContextResolver(allowed_roots=[tmp_path]),
+        file_context_resolver=FileContextResolver(allowed_roots=[tmp_path], deny_list=deny_list),
         task_profiles={"review": review},
     )
     paths = []
@@ -212,3 +216,131 @@ async def test_merged_review_is_one_conversation_arms_are_not(tmp_path):
     assert conversation.turns[0].answer == result.raw_text
     assert "total = price * qty" in conversation.context
     assert len(store._cache._store) == 1
+
+
+# --- one provider, batched (execute_single) -----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_single_provider_review_over_its_cap_goes_in_batches(tmp_path):
+    # 2026-11-01, review-large-l3: groq skipped the whole 15k-token prompt and the
+    # gemini-lite fallback found 0.33-0.50 of the bugs.
+    files = {f"f{i}.py": ("x = 1\n" * 300) for i in range(3)}  # ~450 tokens each
+    full = {name: str(tmp_path / name) for name in files}
+    groq = ScriptedProvider("groq", {full["f0.py"]: [_f(full["f0.py"], 2, "x = 1")],
+                                     full["f2.py"]: [_f(full["f2.py"], 5, "x = 1")]})
+    lite = ScriptedProvider("lite")
+    orch, paths = _setup(tmp_path, {"groq": groq, "lite": lite}, groq_limit=1700, files=files)
+
+    request = DelegateTaskRequest(task="review", task_type="review", file_paths=paths, provider="groq", cross_check=False)
+    assert not orch.wants_cross_check(request) and orch.wants_batching(request)
+    result = await orch.execute_single(request)
+
+    assert result.success, result.error
+    assert len(groq.prompts) >= 2 and not lite.prompts
+    assert all(p.count("--- file: ") <= 1 for p in groq.prompts)
+    assert f"review_batched:{len(groq.prompts)}" in result.warnings
+    assert [(f["file"], f["line"]) for f in result.content["findings"]] == [(full["f0.py"], 2), (full["f2.py"], 5)]
+    assert all(f["citation"] == "ok" for f in result.content["findings"])
+    assert (result.provider, result.cross_check) == ("groq", None)
+    assert result.tokens_used == 15 * len(groq.prompts)
+
+
+@pytest.mark.asyncio
+async def test_a_batch_the_provider_refuses_falls_back_alone(tmp_path):
+    files = {"small.py": "x = 1\n" * 50, "big.py": "y = 2\n" * 1500}  # ~75 / ~2250 tokens
+    big = str(tmp_path / "big.py")
+    groq = ScriptedProvider("groq", max_prompt_tokens=1700)
+    lite = ScriptedProvider("lite", {big: [_f(big, 7, "y = 2")]})
+    orch, paths = _setup(tmp_path, {"groq": groq, "lite": lite}, groq_limit=1700, files=files)
+
+    result = await orch.execute_single(
+        DelegateTaskRequest(task="review", task_type="review", file_paths=paths, provider="groq")
+    )
+
+    assert result.success, result.error
+    assert len(groq.prompts) == 1  # big.py alone is over the cap: skipped before any call
+    assert len(lite.prompts) == 1 and "big.py" in lite.prompts[0] and "small.py" not in lite.prompts[0]
+    assert result.content["findings"][0]["agreed_by"] == ["lite"]
+    assert result.provider == "groq+lite"
+    assert any(w.startswith("fallback_used:lite") for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_every_batch_failing_is_a_failure(tmp_path):
+    files = {f"f{i}.py": ("x = 1\n" * 300) for i in range(3)}
+    groq = ScriptedProvider("groq", error=ProviderUnavailableError("503"))
+    lite = ScriptedProvider("lite", error=ProviderUnavailableError("429"))
+    orch, paths = _setup(tmp_path, {"groq": groq, "lite": lite}, groq_limit=1700, files=files)
+
+    result = await orch.execute_single(
+        DelegateTaskRequest(task="review", task_type="review", file_paths=paths, provider="groq")
+    )
+
+    assert result.success is False
+    assert result.error.startswith("Every one of")
+    assert "review_batch_failed:1/" in result.error
+
+
+@pytest.mark.asyncio
+async def test_review_that_fits_is_one_call_and_keeps_file_warnings(tmp_path):
+    groq = ScriptedProvider("groq")
+    from llm_worker_pool.domain.guardrails import PathDenyList
+
+    orch, paths = _setup(tmp_path, {"groq": groq, "lite": ScriptedProvider("lite")}, groq_limit=1700,
+                         deny_list=PathDenyList())
+    secret = tmp_path / ".env"
+    secret.write_text("KEY=1\n")
+
+    result = await orch.execute_single(DelegateTaskRequest(
+        task="review", task_type="review", file_paths=[*paths, str(secret)], provider="groq",
+    ))
+
+    assert result.success, result.error
+    assert len(groq.prompts) == 1
+    assert not any(w.startswith("review_batched") for w in result.warnings)
+    denied = [w for w in result.warnings if w.startswith("file_denied_sensitive:")]
+    assert denied and set(denied) <= set(result.guardrail_actions)
+
+
+@pytest.mark.asyncio
+async def test_only_one_arm_up_still_batches_for_its_cap(tmp_path):
+    files = {f"f{i}.py": ("x = 1\n" * 300) for i in range(3)}
+    groq = ScriptedProvider("groq")
+    orch, paths = _setup(tmp_path, {"groq": groq}, groq_limit=1700, files=files)
+    orch._use_case._default_provider = "groq"
+
+    result = await orch.execute(DelegateTaskRequest(task="r", task_type="review", file_paths=paths))
+
+    assert result.success, result.error
+    assert "cross_check_skipped:fewer_than_two_providers" in result.warnings
+    assert len(groq.prompts) >= 2
+    assert any(w.startswith("review_batched:") for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_batching_needs_the_findings_contract(tmp_path):
+    groq = ScriptedProvider("groq")
+    orch, paths = _setup(tmp_path, {"groq": groq}, groq_limit=1700)
+    assert not orch.wants_batching(DelegateTaskRequest(task="r", file_paths=paths))
+    assert not orch.wants_batching(
+        DelegateTaskRequest(task="r", task_type="review", file_paths=paths, output_format="text")
+    )
+
+
+@pytest.mark.asyncio
+async def test_batched_review_is_one_conversation_turn(tmp_path):
+    from llm_worker_pool.application.conversation_store import ConversationStore
+
+    files = {f"f{i}.py": ("x = 1\n" * 300) for i in range(3)}
+    orch, paths = _setup(tmp_path, {"groq": ScriptedProvider("groq")}, groq_limit=1700, files=files)
+    store = ConversationStore()
+    orch._use_case._conversations = store
+
+    result = await orch.execute_single(
+        DelegateTaskRequest(task="review", task_type="review", file_paths=paths, provider="groq")
+    )
+
+    assert result.continuation_id
+    assert len(store._cache._store) == 1
+    assert all(f"f{i}.py" in store.get(result.continuation_id).context for i in range(3))

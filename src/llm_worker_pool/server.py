@@ -298,6 +298,9 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
             coro = map_reduce_orchestrator.execute(request)
         elif cross_check_orchestrator.wants_cross_check(request):
             coro = cross_check_orchestrator.execute(request)
+        elif cross_check_orchestrator.wants_batching(request):
+            # A findings review on one provider: files over its prompt cap go in batches.
+            coro = cross_check_orchestrator.execute_single(request)
         else:
             coro = use_case.execute(request)
 

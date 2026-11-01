@@ -571,6 +571,11 @@ class DelegateTaskUseCase:
             return options.model_copy(update={"reasoning_effort": effort})
         return options
 
+    def routed_provider(self, request: DelegateTaskRequest) -> str:
+        """The provider `execute` starts this request on (its own, else routing)."""
+        request, task_profile = self.apply_task_profile(request)
+        return request.provider or self._routed_provider(request.budget, task_profile)
+
     def _routed_provider(self, budget: str, task_profile: TaskProfile | None) -> str:
         """Provider when the request names none: the task type's measured pick if that
         provider is up, else the budget's."""

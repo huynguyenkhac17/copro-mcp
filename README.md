@@ -205,6 +205,8 @@ Large tasks (Budget L3 or Map-Reduce) may exceed Claude's timeout limit. Calling
 
 ### Map-Reduce for Large Contexts
 
+A review with the findings contract (`task_type="review"`) that runs on **one** provider (`cross_check=false`, only one cross-check provider up, or a provider named in the request) is batched instead: when its files exceed that provider's `max_prompt_tokens` (groq: 6000), they go out in batches of whole files that fit, each batch with its own fallback chain, and the findings are concatenated and re-verified against all the files (warning `review_batched:<n>`, failed batches `review_batch_failed:<i>/<n>:...`). There is no LLM reduce step, so file/line/quote evidence survives. A single file over the cap is not split; its batch falls back like any oversized prompt. On `review-large-l3` this took routed recall from 0.33-0.50 to 1.00 (3 runs each), with precision 0.60-1.00 and more groq rate limiting.
+
 `delegate_task(..., map_reduce=true)` automatically splits massive contexts (or large sets of files) into chunks that fit the budget's `num_ctx`. It processes each chunk concurrently (Map phase, bounded by the target provider's `concurrency`), then synthesizes the results (Reduce phase). This requires multiple LLM calls and is **opt-in only**.
 
 ## Registering with Claude Code

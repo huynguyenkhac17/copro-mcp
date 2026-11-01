@@ -118,12 +118,14 @@ async def _run_case(
     async with sem:
         request = _request(case, arm, harness)
         execute = use_case.execute
-        if arm == XCHECK_ARM:
-            from llm_worker_pool.application.cross_check_orchestrator import CrossCheckOrchestrator
+        from llm_worker_pool.application.cross_check_orchestrator import CrossCheckOrchestrator
 
-            orchestrator = CrossCheckOrchestrator(use_case)
-            if orchestrator.wants_cross_check(request):
-                execute = orchestrator.execute
+        orchestrator = CrossCheckOrchestrator(use_case)
+        if arm == XCHECK_ARM and orchestrator.wants_cross_check(request):
+            execute = orchestrator.execute
+        elif orchestrator.wants_batching(request):
+            # As the server does for a review on one provider.
+            execute = orchestrator.execute_single
         started = time.monotonic()
         context = await _resolve_context(use_case, request)
         try:
