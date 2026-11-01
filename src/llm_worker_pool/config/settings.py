@@ -309,9 +309,11 @@ def load_budget_profiles(path: Path | None = None) -> dict[str, BudgetProfile]:
     return profiles
 
 
-def load_task_profiles(path: Path | None = None) -> dict[str, TaskProfile]:
+def load_task_profiles(path: Path | None = None, *, with_eval_routing: bool = True) -> dict[str, TaskProfile]:
     """Reads task_profiles.yaml and returns {task_type: TaskProfile}. A missing file is
-    not an error (task_type then only accepts None), unlike budgets.yaml."""
+    not an error (task_type then only accepts None), unlike budgets.yaml.
+    with_eval_routing=False leaves out routing_from_eval.yaml (worker-eval needs the
+    routing callers would get without it)."""
 
     resolved = path or _resolve_path(TASK_PROFILES_PATH_ENV_VAR, _DEFAULT_TASK_PROFILES_PATH)
     if not resolved.exists():
@@ -322,7 +324,7 @@ def load_task_profiles(path: Path | None = None) -> dict[str, TaskProfile]:
 
     # Measured routing (worker-eval --emit-routing) fills preferred_provider where the
     # profile itself sets none - a hand-written choice always wins.
-    routing = load_eval_routing(resolved.with_name(ROUTING_FROM_EVAL_FILENAME))
+    routing = load_eval_routing(resolved.with_name(ROUTING_FROM_EVAL_FILENAME)) if with_eval_routing else {}
     profiles: dict[str, TaskProfile] = {}
     for name, body in (raw.get("task_types") or {}).items():
         body = dict(body or {})

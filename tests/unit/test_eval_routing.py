@@ -183,3 +183,124 @@ def test_emit_routing_creates_the_target_directory(tmp_path: Path):
     with pytest.raises(SystemExit) as exc:
         main(["--from-report", str(report), "--emit-routing", str(out)])
     assert exc.value.code == 0 and out.exists()
+
+
+def _repeat_row(arm: str, case: str, repeat: int, task_type: str = "review", **scores) -> dict:
+    return {**_row(arm, case, task_type, **scores), "repeat": repeat}
+
+
+def test_repeated_cases_count_once_at_their_mean_and_report_spread():
+    report = _report({
+        "a": {"review": _stats(1.0, 900, bug_recall=0.75)},
+        "b": {"review": _stats(1.0, 900, bug_recall=0.75)},
+    })
+    report["rows"] = [
+        _repeat_row("a", "c1", 0, bug_recall=1.0), _repeat_row("a", "c1", 1, bug_recall=0.5),
+        _repeat_row("a", "c2", 0, bug_recall=1.0), _repeat_row("a", "c2", 1, bug_recall=1.0),
+        _repeat_row("b", "c1", 0, bug_recall=0.5), _repeat_row("b", "c1", 1, bug_recall=0.5),
+        _repeat_row("b", "c2", 0, bug_recall=1.0), _repeat_row("b", "c2", 1, bug_recall=1.0),
+    ]
+    row = routing_table(report)["review"]
+    # a: c1 mean 0.75, c2 1.0 -> 0.875 (a later repeat must not overwrite an earlier one).
+    assert (row["provider"], row["value"], row["paired_cases"]) == ("a", 0.875, 2)
+    assert row["spread"] == 0.25  # repeat means 1.0 vs 0.75
+    assert row["others"]["b"]["value"] == 0.75
+
+
+def test_default_provider_is_kept_unless_beaten_by_more_than_the_margin():
+    report = _report({
+        "groq": {"review": _stats(1.0, 900, bug_recall=0.90), "extract": _stats(1.0, 500, field_accuracy=0.70)},
+        "gemini-lite": {"review": _stats(1.0, 900, bug_recall=0.93), "extract": _stats(1.0, 500, field_accuracy=0.90)},
+    })
+    table = routing_table(report, defaults={"review": "groq", "extract": "groq"}, margin=0.05)
+    assert (table["review"]["provider"], table["review"]["switch"]) == ("groq", False)
+    assert table["review"]["held"] == {"best": "gemini-lite", "lead": 0.03, "required": 0.05}
+    assert table["review"]["others"] == {"gemini-lite": {"value": 0.93, "success": 1.0}}
+    assert (table["extract"]["provider"], table["extract"]["switch"]) == ("gemini-lite", True)
+
+    text = render_routing_yaml(table, report)
+    text.encode("ascii")
+    assert yaml.safe_load(text) == {"preferred_provider": {"extract": "gemini-lite"}}
+    assert "kept default: gemini-lite led by 0.03" in text
+
+
+def test_a_lead_inside_the_run_to_run_spread_does_not_switch():
+    # Lead 0.25 beats the 0.05 margin, but the default itself moved 0.50 between runs.
+    report = _report({
+        "groq": {"review": _stats(1.0, bug_recall=0.5)},
+        "gemini-lite": {"review": _stats(1.0, bug_recall=0.75)},
+    })
+    report["rows"] = [
+        _repeat_row("groq", "c1", 0, bug_recall=0.75), _repeat_row("groq", "c1", 1, bug_recall=0.25),
+        _repeat_row("gemini-lite", "c1", 0, bug_recall=0.75), _repeat_row("gemini-lite", "c1", 1, bug_recall=0.75),
+    ]
+    row = routing_table(report, defaults={"review": "groq"}, margin=0.05)["review"]
+    assert (row["provider"], row["switch"]) == ("groq", False)
+    assert row["held"]["required"] == 0.5
+
+
+def test_winning_default_or_unmeasured_default_needs_no_margin():
+    report = _report({
+        "groq": {"review": _stats(1.0, bug_recall=0.9)},
+        "gemini-lite": {"review": _stats(1.0, bug_recall=0.8)},
+    })
+    row = routing_table(report, defaults={"review": "groq"}, margin=0.5)["review"]
+    assert (row["provider"], row["switch"], row["held"]) == ("groq", False, None)
+    # Default never measured (or not qualified): the best measured provider is written.
+    row = routing_table(report, defaults={"review": "ollama"}, margin=0.5)["review"]
+    assert (row["provider"], row["switch"]) == ("groq", True)
+    assert yaml.safe_load(render_routing_yaml({}, report)) == {"preferred_provider": None}
+
+
+def test_default_providers_ignore_the_eval_routing_file(tmp_path: Path, monkeypatch):
+    from llm_worker_pool.config.settings import AppConfig
+    from llm_worker_pool.evals.runner import default_providers
+
+    (tmp_path / "task_profiles.yaml").write_text(
+        "task_types:\n  review: {default_budget: L3}\n  extract: {preferred_provider: gemini}\n"
+        "  summarize: {}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "routing_from_eval.yaml").write_text("preferred_provider:\n  review: gemini-lite\n", encoding="ascii")
+    monkeypatch.setenv("LLM_WORKER_POOL_TASK_PROFILES_CONFIG", str(tmp_path / "task_profiles.yaml"))
+    config = AppConfig.model_construct(budget_providers={"L3": "groq"}, default_provider="ollama")
+    assert default_providers(config) == {"review": "groq", "extract": "gemini", "summarize": "ollama"}
+
+
+@pytest.mark.asyncio
+async def test_repeat_runs_every_case_n_times_per_arm(tmp_path: Path, monkeypatch):
+    import argparse
+
+    from llm_worker_pool.evals import runner
+
+    dataset = tmp_path / "cases.jsonl"
+    dataset.write_text(
+        "\n".join(json.dumps({"id": i, "task": "t", "task_type": "classify", "budget": "L1"}) for i in ("x", "y")),
+        encoding="utf-8",
+    )
+
+    class _UseCase:
+        def available_providers(self):
+            return ["groq"]
+
+    async def fake_run_case(use_case, judge, case, arm, harness, sem, repeat=0):
+        return {"id": case.id, "task_type": case.task_type, "budget": case.budget, "arm": arm,
+                "repeat": repeat, "model": "m", "latency_ms": 1.0, "prompt_tokens": 0,
+                "completion_tokens": 0, "thinking_tokens": 0, "scores": {"success": 1.0}}
+
+    monkeypatch.setattr(runner, "_build_use_case", lambda config: _UseCase())
+    monkeypatch.setattr(runner, "_run_case", fake_run_case)
+    args = argparse.Namespace(
+        dataset=[str(dataset)], case=None, task_type=None, harness="on", judge=False,
+        judge_provider=None, concurrency=1, arm=["groq"], repeat=3, label=None,
+    )
+    report = await runner.run(args)
+    assert sorted((r["id"], r["repeat"]) for r in report["rows"]) == [
+        (i, n) for i in ("x", "y") for n in range(3)
+    ]
+    assert report["meta"]["repeat"] == 3
+    report["rows"] = [{**r, "provider": "groq", "warnings": [], "error": None, "judge_errors": {}} for r in report["rows"]]
+    md = runner.render_markdown(report)
+    assert "x 3 repeats" in md
+    # Every run is numbered from #1, the first one included.
+    assert all(f"| x#{n} |" in md for n in (1, 2, 3)) and "| x |" not in md

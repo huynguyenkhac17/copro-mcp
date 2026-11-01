@@ -1,4 +1,5 @@
-"""Skip all integration tests if Ollama is not running."""
+"""Skip all integration tests if Ollama is not running or lacks the configured model
+(a box that only pulled nomic-embed-text for RAG is not an Ollama test bed)."""
 
 from __future__ import annotations
 
@@ -24,3 +25,6 @@ def _require_ollama_running(app_config: AppConfig) -> None:
         response.raise_for_status()
     except httpx.HTTPError as exc:
         pytest.skip(f"Ollama is not ready at {ollama_config.endpoint}: {exc}")
+    pulled = {m.get("name") for m in response.json().get("models", [])}
+    if ollama_config.model not in pulled:
+        pytest.skip(f"Ollama model {ollama_config.model!r} is not pulled (`ollama pull {ollama_config.model}`)")

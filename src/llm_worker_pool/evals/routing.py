@@ -36,34 +36,62 @@ def primary_metric(task_type: str, *summaries: dict[str, Any]) -> str | None:
     return None
 
 
+def _case_scores(
+    rows: list[dict[str, Any]], task_type: str, arm: str, metric: str
+) -> dict[str, list[tuple[int, float]]]:
+    """{case id: [(repeat, score), ...]} over the arm's answered runs of each case."""
+    out: dict[str, list[tuple[int, float]]] = {}
+    for r in rows:
+        if r.get("arm") == arm and r.get("task_type") == task_type and metric in r.get("scores", {}):
+            out.setdefault(r["id"], []).append((r.get("repeat", 0), r["scores"][metric]))
+    return out
+
+
 def _paired_means(
     rows: list[dict[str, Any]], task_type: str, arms: list[str], metric: str
-) -> tuple[dict[str, float], int] | None:
-    """Each arm's mean `metric` over the cases EVERY arm answered. Summary means are
-    over each arm's own answered cases, so an arm that failed the hard case would
-    look better than one that answered it imperfectly (2026-10-31: groq skipped the
-    15k-token review that gemini-lite scored 0.50 on, then won review at 1.00)."""
-    per_arm = {
-        arm: {
-            r["id"]: r["scores"][metric]
-            for r in rows
-            if r.get("arm") == arm and r.get("task_type") == task_type and metric in r.get("scores", {})
-        }
-        for arm in arms
-    }
+) -> tuple[dict[str, float], int, dict[str, float]] | None:
+    """(means, paired cases, spreads). Each arm's mean `metric` over the cases EVERY
+    arm answered. Summary means are over each arm's own answered cases, so an arm that
+    failed the hard case would look better than one that answered it imperfectly
+    (2026-10-31: groq skipped the 15k-token review that gemini-lite scored 0.50 on,
+    then won review at 1.00). A case run several times (--repeat) counts once, at the
+    mean of its answered runs. The spread is how far that arm's per-repeat mean over
+    the paired cases moved between runs (0 with a single repeat)."""
+    per_arm = {arm: _case_scores(rows, task_type, arm, metric) for arm in arms}
     common = set.intersection(*(set(scores) for scores in per_arm.values()))
     if not common:
         return None
-    means = {arm: sum(scores[i] for i in common) / len(common) for arm, scores in per_arm.items()}
-    return means, len(common)
+    means: dict[str, float] = {}
+    spreads: dict[str, float] = {}
+    for arm, scores in per_arm.items():
+        means[arm] = sum(sum(v for _, v in scores[i]) / len(scores[i]) for i in common) / len(common)
+        by_repeat: dict[int, list[float]] = {}
+        for i in common:
+            for repeat, value in scores[i]:
+                by_repeat.setdefault(repeat, []).append(value)
+        # Only repeats that answered every paired case are comparable run to run.
+        run_means = [sum(v) / len(v) for v in by_repeat.values() if len(v) == len(common)]
+        spreads[arm] = max(run_means) - min(run_means) if len(run_means) > 1 else 0.0
+    return means, len(common), spreads
 
 
-def routing_table(report: dict[str, Any], *, min_success: float = 0.8) -> dict[str, dict[str, Any]]:
+def routing_table(
+    report: dict[str, Any],
+    *,
+    min_success: float = 0.8,
+    defaults: dict[str, str] | None = None,
+    margin: float = 0.0,
+) -> dict[str, dict[str, Any]]:
     """{task_type: {provider, metric, value, success, latency_p50_ms, cases, paired_cases,
-    others}}. A provider qualifies for a task type when it answered at least
-    `min_success` of its cases. Qualified providers are compared on the primary metric
-    over the cases all of them answered (when the report has per-case rows), then on
-    success, then on lower latency."""
+    spread, others, switch}}. A provider qualifies for a task type when it answered at
+    least `min_success` of its cases. Qualified providers are compared on the primary
+    metric over the cases all of them answered (when the report has per-case rows),
+    then on success, then on lower latency.
+
+    `defaults` is {task_type: provider callers get today}. When that provider qualified
+    and lost, the winner must lead it on the metric by more than `margin` and by more
+    than either one's run-to-run spread; otherwise the row keeps the default with
+    switch=False (two judged runs on 2026-10-31 flipped review/classify/generate)."""
     by_type: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for arm, summary in report.get("summary", {}).items():
         if arm in _COMPOSITE_ARMS:
@@ -86,7 +114,18 @@ def routing_table(report: dict[str, Any], *, min_success: float = 0.8) -> dict[s
             key = (value, stats["success"], -(latency if latency is not None else float("inf")))
             candidates.append((key, arm, stats))
         candidates.sort(reverse=True)
-        (value, _, _), arm, stats = candidates[0]
+        spreads = paired[2] if paired else {}
+        best = candidates[0]
+        chosen, held = best, None
+        default = (defaults or {}).get(task_type)
+        incumbent = next((c for c in candidates if c[1] == default), None)
+        if incumbent is not None and incumbent is not best:
+            lead = best[0][0] - incumbent[0][0]
+            required = max(margin, spreads.get(best[1], 0.0), spreads.get(default, 0.0))
+            if lead <= required:
+                chosen = incumbent
+                held = {"best": best[1], "lead": round(lead, 4), "required": round(required, 4)}
+        (value, _, _), arm, stats = chosen
         table[task_type] = {
             "provider": arm,
             "metric": metric,
@@ -95,10 +134,16 @@ def routing_table(report: dict[str, Any], *, min_success: float = 0.8) -> dict[s
             "latency_p50_ms": stats.get("latency_p50_ms"),
             "cases": stats.get("cases"),
             "paired_cases": paired[1] if paired else None,
+            "spread": spreads.get(arm),
             "others": {
                 other: {"value": round(k[0], 4), "success": s["success"]}
-                for k, other, s in candidates[1:]
+                for k, other, s in candidates
+                if other != arm
             },
+            # False: the default stays (no measured reason to move), so nothing is written.
+            "switch": arm != default,
+            "held": held,
+            "default": default,
         }
     return table
 
@@ -112,7 +157,10 @@ def render_routing_yaml(table: dict[str, dict[str, Any]], report: dict[str, Any]
         "# primary metric per task type over the cases every qualified provider",
         "# answered (paired=N), then success, then latency; a provider needed",
         "# success >= min_success to qualify. A preferred_provider written in",
-        "# task_profiles.yaml beats this file.",
+        "# task_profiles.yaml beats this file. A task type whose default provider",
+        "# was not beaten by more than the switch margin and the run-to-run spread",
+        "# stays commented out (it keeps the default).",
+        f"# Repeats per case: {report.get('meta', {}).get('repeat', 1)}.",
         "preferred_provider:",
     ]
     for task_type in sorted(table):
@@ -122,12 +170,23 @@ def render_routing_yaml(table: dict[str, dict[str, Any]], report: dict[str, Any]
         ) or "no other qualified arm"
         latency = row["latency_p50_ms"]
         paired = row["paired_cases"]
+        spread = row.get("spread")
         lines.append(
-            f"  # {row['metric']}={row['value']:.2f} (paired={'-' if paired is None else paired}), "
+            f"  # {row['metric']}={row['value']:.2f} (paired={'-' if paired is None else paired}"
+            f"{'' if not spread else f', spread={spread:.2f}'}), "
             f"success={row['success']:.2f}, p50={'-' if latency is None else f'{latency:.0f}ms'}, "
             f"cases={row['cases']}; vs {others}"
         )
-        lines.append(f"  {task_type}: {row['provider']}")
+        held = row.get("held")
+        if held:
+            lines.append(
+                f"  # kept default: {held['best']} led by {held['lead']:.2f}, "
+                f"needed > {held['required']:.2f}"
+            )
+        if row.get("switch", True):
+            lines.append(f"  {task_type}: {row['provider']}")
+        else:
+            lines.append(f"  # {task_type}: {row['provider']}  (default, not written)")
     text = "\n".join(lines) + "\n"
     return text.encode("ascii", "replace").decode("ascii")
 

@@ -9,6 +9,7 @@ request exactly as a caller without task_type would - that is the baseline.
     worker-eval --arm groq --harness on --compare evals/reports/<baseline>.json
     worker-eval --compare A.json B.json                      # diff two reports only
     worker-eval --arm groq --arm gemini-lite --harness on --emit-routing   # measured routing
+    worker-eval --arm groq --arm gemini-lite --harness on --repeat 3 --emit-routing
     worker-eval --from-report NEW.json --gate BASELINE.json  # exit 1 on a quality drop
 
 Outputs evals/reports/<timestamp>.{json,md} and ~/.llm_worker_pool/eval_latest.json
@@ -30,7 +31,7 @@ from typing import Any
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.config.settings import AppConfig
 from llm_worker_pool.domain.validators import split_context_files
-from llm_worker_pool.config.settings import ROUTING_FROM_EVAL_FILENAME
+from llm_worker_pool.config.settings import ROUTING_FROM_EVAL_FILENAME, load_task_profiles
 from llm_worker_pool.evals.dataset import EvalCase, load_cases
 from llm_worker_pool.evals.routing import gate, render_routing_yaml, routing_table
 from llm_worker_pool.evals.scoring import mean, percentile, score_case
@@ -111,7 +112,9 @@ def _is_rag(case: EvalCase) -> bool:
     return any((REPO_ROOT / p).is_dir() for p in case.file_paths or [])
 
 
-async def _run_case(use_case, judge, case: EvalCase, arm: str, harness: bool, sem: asyncio.Semaphore) -> dict[str, Any]:
+async def _run_case(
+    use_case, judge, case: EvalCase, arm: str, harness: bool, sem: asyncio.Semaphore, repeat: int = 0
+) -> dict[str, Any]:
     async with sem:
         request = _request(case, arm, harness)
         execute = use_case.execute
@@ -142,6 +145,7 @@ async def _run_case(use_case, judge, case: EvalCase, arm: str, harness: bool, se
         "task_type": case.task_type,
         "budget": case.budget,
         "arm": arm,
+        "repeat": repeat,
         "provider": result.provider,
         "model": result.model,
         "latency_ms": round(result.latency_ms or wall_ms, 1),
@@ -206,7 +210,8 @@ def _fmt(value: Any) -> str:
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [f"# worker-eval {report['generated_at']}", ""]
     meta = report["meta"]
-    lines.append(f"- harness: **{meta['harness']}**, arms: {', '.join(meta['arms'])}, cases: {meta['cases']}")
+    lines.append(f"- harness: **{meta['harness']}**, arms: {', '.join(meta['arms'])}, cases: {meta['cases']}"
+                 + (f" x {meta['repeat']} repeats" if meta.get("repeat", 1) > 1 else ""))
     if meta.get("note"):
         lines.append(f"- note: {meta['note']}")
     judge = meta.get("judge")
@@ -242,7 +247,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         notes = r["error"] or "; ".join(sorted({w.split(":")[0].split(" ")[0] for w in r["warnings"]}))
         if r["judge_errors"]:
             notes += f" judge_errors={list(r['judge_errors'])}"
-        lines.append(f"| {r['arm']} | {r['id']} | {r['provider']} | {_fmt(r['latency_ms'])} | {scores} | {notes[:160]} |")
+        case_id = f"{r['id']}#{r.get('repeat', 0) + 1}" if meta.get("repeat", 1) > 1 else r["id"]
+        lines.append(f"| {r['arm']} | {case_id} | {r['provider']} | {_fmt(r['latency_ms'])} | {scores} | {notes[:160]} |")
     return "\n".join(lines) + "\n"
 
 
@@ -296,9 +302,9 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             if arm not in _SPECIAL_ARMS and arm not in use_case.available_providers():
                 print(f"skipping arm {arm!r}: provider not available", file=sys.stderr)
                 continue
-            print(f"arm {arm}: {len(cases)} cases", file=sys.stderr)
+            print(f"arm {arm}: {len(cases)} cases x {args.repeat}", file=sys.stderr)
             arm_rows = await asyncio.gather(
-                *(_run_case(use_case, judge, c, arm, harness, sem) for c in cases)
+                *(_run_case(use_case, judge, c, arm, harness, sem, i) for i in range(args.repeat) for c in cases)
             )
             rows.extend(arm_rows)
             arm_models[arm] = next((r["model"] for r in arm_rows if r["model"]), None)
@@ -312,7 +318,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at": stamp,
         "meta": {
             "harness": args.harness, "arms": list(args.arm), "arm_models": arm_models,
-            "cases": len(cases), "dataset": args.dataset, "judge": judge_meta,
+            "cases": len(cases), "repeat": args.repeat, "dataset": args.dataset, "judge": judge_meta,
             "judge_key_stats": judge_stats, "label": args.label,
         },
         "summary": _summaries(rows),
@@ -366,6 +372,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--case", action="append", help="only these case ids")
     parser.add_argument("--task-type", action="append", help="only these task types")
     parser.add_argument("--concurrency", type=int, default=None)
+    parser.add_argument("--repeat", type=int, default=1,
+                        help="run every case N times per arm (routing then sees run-to-run spread)")
     parser.add_argument("--label", default=None, help="suffix for the report file name")
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "evals" / "reports")
     parser.add_argument("--compare", action="append", default=[],
@@ -377,11 +385,16 @@ def main(argv: list[str] | None = None) -> None:
                         "(default config/routing_from_eval.yaml)")
     parser.add_argument("--min-success", type=float, default=0.8,
                         help="share of cases a provider must answer to be routed to")
+    parser.add_argument("--switch-margin", type=float, default=0.05,
+                        help="lead on the primary metric a provider needs over the task type's "
+                        "default provider before --emit-routing moves away from it")
     parser.add_argument("--gate", type=Path, default=None,
                         help="baseline report: exit 1 if a task type's primary metric dropped")
     parser.add_argument("--gate-tolerance", type=float, default=0.05)
     args = parser.parse_args(argv)
     args.dataset = args.dataset or [str(REPO_ROOT / "evals" / "datasets")]
+    if args.repeat < 1:
+        parser.error("--repeat must be at least 1")
 
     if args.from_report is not None:
         if args.arm:
@@ -413,17 +426,34 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(_decide(report, args))
 
 
+def default_providers(config: AppConfig | None = None) -> dict[str, str]:
+    """{task_type: provider} a request with that task_type and no provider goes to
+    today, ignoring routing_from_eval.yaml: a hand-written preferred_provider, else
+    the provider of the profile's budget, else default_provider (mirrors
+    DelegateTaskUseCase._routed_provider, minus the provider-is-up check)."""
+    config = config or AppConfig()
+    budget_default = DelegateTaskRequest.model_fields["budget"].default
+    out: dict[str, str] = {}
+    for name, profile in load_task_profiles(with_eval_routing=False).items():
+        budget = profile.default_budget or budget_default
+        out[name] = profile.preferred_provider or config.budget_providers.get(budget) or config.default_provider
+    return out
+
+
 def _decide(report: dict[str, Any], args: argparse.Namespace) -> int:
     """--emit-routing and --gate on a report; returns the process exit code."""
     code = 0
     if args.emit_routing is not None:
-        table = routing_table(report, min_success=args.min_success)
+        table = routing_table(
+            report, min_success=args.min_success, defaults=default_providers(), margin=args.switch_margin
+        )
         if table:
             args.emit_routing.parent.mkdir(parents=True, exist_ok=True)
             args.emit_routing.write_text(render_routing_yaml(table, report), encoding="ascii")
             print(f"routing: {args.emit_routing}", file=sys.stderr)
             for task_type, row in sorted(table.items()):
-                print(f"  {task_type}: {row['provider']} ({row['metric']}={row['value']:.2f})", file=sys.stderr)
+                kept = "" if row["switch"] else " (default, not written)"
+                print(f"  {task_type}: {row['provider']} ({row['metric']}={row['value']:.2f}){kept}", file=sys.stderr)
         else:
             print("routing: no provider qualified for any task type; nothing written", file=sys.stderr)
     if args.gate is not None:
