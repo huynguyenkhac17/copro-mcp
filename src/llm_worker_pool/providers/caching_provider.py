@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import Any
 
 from llm_worker_pool.domain.interfaces import LLMProvider
 from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
@@ -40,6 +41,10 @@ class CachingProvider:
             return None
         check = getattr(self._inner, "unready_reason", None)
         return check(prompt, options) if check else None
+
+    def breaker_stats(self) -> dict[str, Any] | None:
+        check = getattr(self._inner, "breaker_stats", None)
+        return check() if check else None
 
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         key = self._make_key(prompt, options)

@@ -28,6 +28,7 @@ from llm_worker_pool.domain.chunker import Chunker
 from llm_worker_pool.domain.exceptions import LocalAIGatewayError
 from llm_worker_pool.domain.file_context import FileContextResolver
 from llm_worker_pool.domain.guardrails import DEFAULT_DENY_GLOBS, PathDenyList, SecretScanner
+from llm_worker_pool.domain.interfaces import LLMProvider
 from llm_worker_pool.infra.url_fetcher import UrlContextFetcher
 from llm_worker_pool.domain.rag_indexer import RagIndexer
 from llm_worker_pool.infra.cache import InMemoryTTLCache
@@ -42,11 +43,22 @@ _SERVER_NAME = "llm-worker-pool"
 _logger = get_logger(__name__)
 
 
+def _breaker_stats(providers: dict[str, LLMProvider]) -> dict[str, dict[str, dict]]:
+    out = {}
+    for name, provider in providers.items():
+        read = getattr(provider, "breaker_stats", None)
+        stats = read() if read else None
+        if stats:
+            out[name] = stats
+    return out
+
+
 def _build_use_case(
     config: AppConfig, stats_collector: StatsCollector
 ) -> tuple[DelegateTaskUseCase, FileContextResolver]:
     budget_profiles = load_budget_profiles()
     providers = ProviderFactory(config).create_all()
+    stats_collector.breaker_source = lambda: _breaker_stats(providers)
     event_log = None
     if config.metrics.enabled:
         event_log = EventLog(
@@ -323,7 +335,8 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
         name="get_gateway_stats",
         description=(
             "View LLM Worker Pool usage statistics: cache hits, estimated "
-            "tokens saved by cache, error counts, and a breakdown by provider/budget."
+            "tokens saved by cache, error counts, a breakdown by provider/budget, "
+            "and per-key circuit breaker state (keys by position, which are quarantined)."
         ),
     )
     async def get_gateway_stats() -> GatewayStats:

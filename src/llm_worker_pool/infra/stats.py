@@ -12,6 +12,7 @@ import json
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -52,6 +53,21 @@ class ProviderStats(BaseModel):
     by_budget: dict[str, BudgetStats] = Field(default_factory=dict)
 
 
+class KeyBreakerStats(BaseModel):
+    consecutive_failures: int = 0
+    is_quarantined: bool = False
+    quarantine_remaining_seconds: float = 0.0
+    quarantined_until: float = 0.0
+    """Epoch seconds, 0 when not quarantined. On the disk snapshot is_quarantined
+    and the remaining seconds are as of the last write; compare this to now instead."""
+    total_quarantines: int = 0
+    total_failures: int = 0
+    total_successes: int = 0
+
+
+BreakerSource = Callable[[], dict[str, dict[str, dict]]]
+
+
 class GatewayStats(BaseModel):
     uptime_seconds: float = 0.0
     total_requests: int = 0
@@ -65,6 +81,8 @@ class GatewayStats(BaseModel):
 
     tokens: TokenTotals = Field(default_factory=TokenTotals)
     providers: dict[str, ProviderStats] = Field(default_factory=dict)
+    circuit_breakers: dict[str, dict[str, KeyBreakerStats]] = Field(default_factory=dict)
+    """Per provider, per key position (`key_0`, ...): live state read at snapshot time."""
 
 
 def default_snapshot_path() -> Path:
@@ -72,10 +90,15 @@ def default_snapshot_path() -> Path:
 
 
 class StatsCollector:
-    def __init__(self, snapshot_path: Path | None = None) -> None:
+    def __init__(
+        self, snapshot_path: Path | None = None, breaker_source: BreakerSource | None = None
+    ) -> None:
         self._start_time = time.monotonic()
         self._stats = GatewayStats()
         self._snapshot_path = snapshot_path
+        # Set after construction too: the providers that own the breakers are built
+        # after the collector they report to.
+        self.breaker_source = breaker_source
 
     def record_success(
         self,
@@ -148,7 +171,18 @@ class StatsCollector:
 
     def snapshot(self) -> GatewayStats:
         self._stats.uptime_seconds = time.monotonic() - self._start_time
-        return self._stats.model_copy(deep=True)
+        snapshot = self._stats.model_copy(deep=True)
+        if self.breaker_source is not None:
+            # _persist runs this after every request and must never raise, so a
+            # broken source costs the breaker section, not the caller's result.
+            try:
+                snapshot.circuit_breakers = {
+                    provider: {label: KeyBreakerStats(**st) for label, st in keys.items()}
+                    for provider, keys in self.breaker_source().items()
+                }
+            except Exception:
+                snapshot.circuit_breakers = {}
+        return snapshot
 
     def _persist(self) -> None:
         """Mirror the snapshot to disk, atomically and without ever raising.

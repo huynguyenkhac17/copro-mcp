@@ -94,3 +94,19 @@ def test_get_stats():
     assert "key-2" in stats
     assert stats["key-2"]["total_quarantines"] == 1
     assert stats["key-2"]["is_quarantined"] is True
+
+
+def test_stats_by_position_hides_keys_and_covers_unused_ones():
+    cb = KeyCircuitBreaker(failure_threshold=2, quarantine_seconds=60.0)
+    for _ in range(2):
+        cb.record_failure("sk-secret-b", 429)
+
+    before = time.time()
+    stats = cb.stats_by_position(["sk-secret-a", "sk-secret-b"])
+
+    assert list(stats) == ["key_0", "key_1"]
+    assert "sk-secret" not in repr(stats)
+    assert stats["key_0"]["total_failures"] == 0 and stats["key_0"]["quarantined_until"] == 0.0
+    assert stats["key_1"]["is_quarantined"] is True
+    assert stats["key_1"]["total_quarantines"] == 1
+    assert before + 55 < stats["key_1"]["quarantined_until"] < time.time() + 61

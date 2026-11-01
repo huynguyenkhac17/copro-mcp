@@ -91,6 +91,28 @@ class KeyCircuitBreaker:
         earliest_key = min(keys, key=lambda k: self._get_state(k).quarantined_until)
         return [earliest_key]
 
+    def stats_by_position(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+        """Stats for every configured key, labelled `key_<i>` by its position in
+        `keys` - the keys themselves are secrets. A key never used yet reports zeros.
+        `quarantined_until` is wall-clock (epoch seconds, 0 = not quarantined) so a
+        reader of the on-disk snapshot can tell whether a quarantine is still on."""
+        now = time.monotonic()
+        wall_offset = time.time() - now
+        out: dict[str, dict[str, Any]] = {}
+        for i, key in enumerate(keys):
+            st = self._states.get(key) or KeyState()
+            quarantined = st.quarantined_until > now
+            out[f"key_{i}"] = {
+                "consecutive_failures": st.consecutive_failures,
+                "is_quarantined": quarantined,
+                "quarantine_remaining_seconds": max(0.0, st.quarantined_until - now),
+                "quarantined_until": st.quarantined_until + wall_offset if quarantined else 0.0,
+                "total_quarantines": st.total_quarantines,
+                "total_failures": st.total_failures,
+                "total_successes": st.total_successes,
+            }
+        return out
+
     def get_stats(self) -> dict[str, Any]:
         now = time.monotonic()
         return {

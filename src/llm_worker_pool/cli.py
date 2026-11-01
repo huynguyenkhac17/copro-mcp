@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from llm_worker_pool.infra.stats import GatewayStats, default_snapshot_path
@@ -35,7 +36,31 @@ def _fmt_duration(seconds: float) -> str:
     return f"{secs}s"
 
 
-def render(stats: GatewayStats) -> str:
+def _render_breakers(stats: GatewayStats, now: float) -> list[str]:
+    """Only keys that have failed at least once: a healthy pool prints one line."""
+    lines = ["", "  CIRCUIT BREAKER (key theo vị trí trong cấu hình)"]
+    rows = []
+    for provider, keys in sorted(stats.circuit_breakers.items()):
+        for label, k in keys.items():
+            if not k.total_failures:
+                continue
+            # The snapshot is written per request, so is_quarantined may be stale;
+            # the wall-clock deadline is not.
+            left = k.quarantined_until - now
+            state = f"khóa còn {_fmt_duration(left)}" if left > 0 else "mở"
+            rows.append(
+                f"  {provider + '/' + label:<22}{k.total_failures:>6}{k.total_quarantines:>8}"
+                f"{k.total_successes:>8}  {state}"
+            )
+    if not rows:
+        lines.append("  Chưa key nào lỗi.")
+        return lines
+    lines.append(f"  {'':<22}{'lỗi':>6}{'bị khóa':>8}{'ok':>8}  trạng thái")
+    return lines + rows
+
+
+def render(stats: GatewayStats, now: float | None = None) -> str:
+    now = time.time() if now is None else now
     lines: list[str] = []
     add = lines.append
 
@@ -93,6 +118,9 @@ def render(stats: GatewayStats) -> str:
                 f"    └ {budget:<18}{b.success_count:>6}{b.failure_count:>6}"
                 f"{b.truncated_count:>6}{_fmt_int(b.tokens.total):>12}{b_avg:>10.0f}"
             )
+
+    if stats.circuit_breakers:
+        lines.extend(_render_breakers(stats, now))
 
     return "\n".join(lines)
 

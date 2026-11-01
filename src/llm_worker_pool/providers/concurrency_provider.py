@@ -11,6 +11,7 @@ sequential.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from llm_worker_pool.domain.interfaces import LLMProvider
 from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
@@ -36,6 +37,10 @@ class ConcurrencyProvider:
     def unready_reason(self, prompt: str, options: GenerationOptions) -> str | None:
         check = getattr(self._inner, "unready_reason", None)
         return check(prompt, options) if check else None
+
+    def breaker_stats(self) -> dict[str, Any] | None:
+        check = getattr(self._inner, "breaker_stats", None)
+        return check() if check else None
 
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         async with self._semaphore:

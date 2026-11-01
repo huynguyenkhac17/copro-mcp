@@ -73,6 +73,11 @@ class OpenAICompatibleProvider:
     def quota_tracker(self) -> QuotaTracker | None:
         return self._quota
 
+    def breaker_stats(self) -> dict[str, Any] | None:
+        if self._circuit_breaker is None:
+            return None
+        return self._circuit_breaker.stats_by_position(self._api_keys)
+
     def _estimate(self, prompt: str, options: GenerationOptions) -> int:
         return estimate_tokens((options.system_prompt or "") + prompt)
 
