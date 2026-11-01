@@ -81,6 +81,9 @@ class DelegateTaskResult(BaseModel):
     """Set when findings were merged from several providers: per-arm outcome, and how
     many findings more than one provider reported (each finding carries agreed_by)."""
 
+    progress: str | None = None
+    """While an async job runs: its latest step, e.g. "[3/6] map 3/5 done"."""
+
     continuation_id: str | None = None
     """Pass back as `continuation_id` to follow up on this answer (e.g. task="continue"
     after output_truncated_at_max_tokens) without resending the context."""

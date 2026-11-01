@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+from llm_worker_pool.application import progress
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.domain.chunker import Chunker
@@ -57,7 +58,9 @@ class MapReduceOrchestrator:
             # Fits in one chunk, use standard execution
             return await self._use_case.execute(request)
             
-        # 2. Map Phase
+        # 2. Map Phase (+1 step for the reduce)
+        await progress.begin(len(chunks) + 1, f"map-reduce: {len(chunks)} parts")
+        map_label = progress.counter("map {done}/{total} done", len(chunks))
         map_tasks = []
         for i, chunk in enumerate(chunks):
             map_req = DelegateTaskRequest(
@@ -68,7 +71,7 @@ class MapReduceOrchestrator:
                 output_format="text", 
                 task_type=request.task_type,
             )
-            map_tasks.append(self._use_case.execute(map_req))
+            map_tasks.append(progress.step(self._use_case.execute(map_req), map_label))
             
         map_results = await asyncio.gather(*map_tasks, return_exceptions=True)
         
@@ -100,7 +103,10 @@ class MapReduceOrchestrator:
             task_type=request.task_type,
         )
         
-        final_result = await self._use_case.execute(reduce_req)
+        final_result = await progress.step(
+            self._use_case.execute(reduce_req),
+            lambda: f"reduce of {len(valid_map_results)} extracts done",
+        )
 
         if final_result.success and final_result.verification is not None:
             # The reduce call only saw the map extracts, which carry no file headers -

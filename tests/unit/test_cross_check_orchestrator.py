@@ -346,3 +346,38 @@ async def test_batched_review_is_one_conversation_turn(tmp_path):
     assert result.continuation_id
     assert len(store._cache._store) == 1
     assert all(f"f{i}.py" in store.get(result.continuation_id).context for i in range(3))
+
+
+@pytest.mark.asyncio
+async def test_batches_and_arms_report_progress(tmp_path):
+    from llm_worker_pool.application import progress
+
+    files = {f"f{i}.py": ("x = 1\n" * 300) for i in range(3)}
+    groq = ScriptedProvider("groq")
+    lite = ScriptedProvider("lite")
+    orch, paths = _setup(tmp_path, {"groq": groq, "lite": lite}, groq_limit=1700, files=files)
+
+    events: list[tuple[float, float | None, str]] = []
+
+    async def sink(value, total, message):
+        events.append((value, total, message))
+
+    with progress.reporting_to(sink):
+        await orch.execute(DelegateTaskRequest(task="review", task_type="review", file_paths=paths))
+    calls = len(groq.prompts) + len(lite.prompts)
+    assert events[0] == (0, calls, f"cross-check on groq ({len(groq.prompts)} calls), lite (1 calls)")
+    assert events[-1][:2] == (calls, calls)
+    assert sorted(m for _, _, m in events[1:]) == sorted(
+        [f"groq: {i}/{len(groq.prompts)} calls done" for i in range(1, len(groq.prompts) + 1)]
+        + ["lite: 1/1 calls done"]
+    )
+
+    events.clear()
+    groq.prompts.clear()
+    request = DelegateTaskRequest(task="review", task_type="review", file_paths=paths, provider="groq", cross_check=False)
+    with progress.reporting_to(sink):
+        await orch.execute_single(request)
+    n = len(groq.prompts)
+    assert [m for _, _, m in events] == [f"review in {n} batches on groq"] + [
+        f"review batch {i}/{n} done" for i in range(1, n + 1)
+    ]

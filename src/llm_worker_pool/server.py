@@ -14,9 +14,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Context, MCPServer
 
 from llm_worker_pool import __version__
+from llm_worker_pool.application import progress
 from llm_worker_pool.application.conversation_store import ConversationStore
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
@@ -250,6 +251,7 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
         task_type: str | None = None,
         cross_check: bool | None = None,
         continuation_id: str | None = None,
+        ctx: Context | None = None,
     ) -> DelegateTaskResult:
         try:
             fields: dict[str, Any] = {
@@ -313,8 +315,11 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                 budget_used=effective_budget,
             )
         else:
+            # A no-op unless the client sent a progress token (Claude Code does).
+            sink = ctx.report_progress if ctx is not None else None
             try:
-                return await coro
+                with progress.reporting_to(sink):
+                    return await coro
             except LocalAIGatewayError as exc:
                 _logger.error("delegate_task failed: %s", exc)
                 return DelegateTaskResult(success=False, budget_used=effective_budget, error=str(exc))

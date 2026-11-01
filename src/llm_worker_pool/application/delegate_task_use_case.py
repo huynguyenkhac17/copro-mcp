@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import time
 
+from llm_worker_pool.application import progress
 from llm_worker_pool.application.conversation_store import (
     INHERITED_FIELDS,
     Conversation,
@@ -192,6 +193,10 @@ class DelegateTaskUseCase:
                     provider = tier
                     error = reason
                     continue
+            await progress.note(
+                f"calling {tier.provider_name}"
+                + (f" after {failures[-1]}"[:200] if failures else "")
+            )
             tier_start = time.monotonic()
             try:
                 response = await self._call_provider(
@@ -253,6 +258,9 @@ class DelegateTaskUseCase:
             # byte-identical payload and burned a second full call for nothing.
             fallback_options = used_options.model_copy(
                 update={"think": False, "reasoning_effort": "low"}
+            )
+            await progress.note(
+                f"retrying {provider.provider_name} with reasoning curbed after an empty answer"
             )
             try:
                 # Same cap as the tier's first call: a non-last tier must not be able to

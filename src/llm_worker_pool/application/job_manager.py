@@ -8,6 +8,7 @@ from collections.abc import Coroutine
 from enum import Enum
 from typing import Any
 
+from llm_worker_pool.application import progress
 from llm_worker_pool.application.dto import DelegateTaskResult
 from llm_worker_pool.domain.exceptions import ConfigurationError
 from llm_worker_pool.infra.cache import InMemoryTTLCache
@@ -37,9 +38,17 @@ class JobManager:
         )
         self._cache.set(job_id, initial_result)
 
+        async def _record_progress(value: float, total: float | None, message: str) -> None:
+            # The MCP request that submitted the job has already been answered, so the
+            # progress goes into the status check_job_status returns.
+            current = self._cache.get(job_id)
+            if current is not None and current.status == JobStatus.RUNNING.value:
+                current.progress = format_progress(value, total, message)
+
         async def _run() -> None:
             try:
-                result = await coro
+                with progress.reporting_to(_record_progress):
+                    result = await coro
                 result.job_id = job_id
                 result.status = JobStatus.DONE.value  # type: ignore[arg-type]
                 self._cache.set(job_id, result)
@@ -62,3 +71,8 @@ class JobManager:
         if result is None:
             raise ConfigurationError(f"Job ID '{job_id}' does not exist or has expired.")
         return result
+
+
+def format_progress(value: float, total: float | None, message: str) -> str:
+    count = f"{value:g}/{total:g}" if total is not None else f"{value:g}"
+    return f"[{count}] {message}"

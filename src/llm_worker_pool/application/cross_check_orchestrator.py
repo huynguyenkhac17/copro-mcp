@@ -29,6 +29,7 @@ import asyncio
 import json
 from typing import Any
 
+from llm_worker_pool.application import progress
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.domain.finding_merge import findings_of, merge_findings
@@ -72,7 +73,12 @@ class CrossCheckOrchestrator:
         splittable = bool(request.file_paths) and not request.context and not request.urls
         files = split_context_files(context) if splittable else {}
 
-        arm_jobs = [self._run_arm(arm, base, files) for arm in arms]
+        batches = {arm: self._batches(arm, base, files) for arm in arms}
+        await progress.begin(
+            sum(len(b) for b in batches.values()),
+            "cross-check on " + ", ".join(f"{arm} ({len(b)} calls)" for arm, b in batches.items()),
+        )
+        arm_jobs = [self._run_arm(arm, base, batches[arm]) for arm in arms]
         outcomes = await asyncio.gather(*arm_jobs)
         return self._combine(request, arms, outcomes, context, context_warnings)
 
@@ -109,9 +115,14 @@ class CrossCheckOrchestrator:
             result = await self._use_case.execute(base)
             return self._with_context_warnings(result, context_warnings)
 
+        await progress.begin(len(batches), f"review in {len(batches)} batches on {provider}")
+        label = progress.counter("review batch {done}/{total} done", len(batches))
         results = await asyncio.gather(
             *(
-                self._use_case.execute(base.model_copy(update={"context": ctx}), keep_conversation=False)
+                progress.step(
+                    self._use_case.execute(base.model_copy(update={"context": ctx}), keep_conversation=False),
+                    label,
+                )
                 for ctx in batches
             ),
             return_exceptions=True,
@@ -155,15 +166,18 @@ class CrossCheckOrchestrator:
     # --- one arm ---------------------------------------------------------------
 
     async def _run_arm(
-        self, arm: str, base: DelegateTaskRequest, files: dict[str, str]
+        self, arm: str, base: DelegateTaskRequest, batches: list[str | None]
     ) -> dict[str, Any]:
-        batches = self._batches(arm, base, files)
         requests = [
             base.model_copy(update={"provider": arm, "context": ctx}) for ctx in batches
         ]
+        label = progress.counter(f"{arm}: {{done}}/{{total}} calls done", len(batches))
         results = await asyncio.gather(
             *(
-                self._use_case.execute(r, allow_fallback=False, keep_conversation=False)
+                progress.step(
+                    self._use_case.execute(r, allow_fallback=False, keep_conversation=False),
+                    label,
+                )
                 for r in requests
             ),
             return_exceptions=True,
