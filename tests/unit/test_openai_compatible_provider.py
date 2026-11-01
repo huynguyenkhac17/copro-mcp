@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from llm_worker_pool.domain.exceptions import ProviderUnavailableError
 from llm_worker_pool.domain.models import GenerationOptions
 from llm_worker_pool.providers.openai_compatible_provider import OpenAICompatibleProvider
 
@@ -396,3 +397,43 @@ async def test_quota_is_reserved_while_waiting_on_a_busy_key():
     await asyncio.gather(first, second)
     assert tracker._state("key-a").reserved_requests == 0
     assert tracker._state("key-a").reserved_tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_429_reports_the_wait_until_some_key_is_free():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers["Authorization"] == "Bearer key-a":
+            return httpx.Response(429, headers={"retry-after": "20"}, text="rate limited")
+        return httpx.Response(429, headers={"retry-after": "8"}, text="rate limited")
+
+    provider = _quota_provider(["key-a", "key-b"], handler)
+    with pytest.raises(ProviderUnavailableError) as first:
+        await provider.generate("p", GenerationOptions())
+    # key-b is still free, so a retry need not wait.
+    assert first.value.retry_after == 0.0
+
+    with pytest.raises(ProviderUnavailableError) as second:
+        await provider.generate("p", GenerationOptions())
+    # Both parked now: the earlier of the two locks.
+    assert second.value.retry_after == pytest.approx(8, abs=0.5)
+
+
+@pytest.mark.asyncio
+async def test_429_without_a_hint_leaves_retry_after_unset():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="rate limited")
+
+    provider = _quota_provider(["key-a"], handler)
+    with pytest.raises(ProviderUnavailableError) as raised:
+        await provider.generate("p", GenerationOptions())
+    assert raised.value.retry_after is None
+
+
+@pytest.mark.asyncio
+async def test_429_retry_after_header_used_without_a_tracker():
+    provider = _make_provider(
+        ["key-a"], lambda request: httpx.Response(429, headers={"retry-after": "5"}, text="x")
+    )
+    with pytest.raises(ProviderUnavailableError) as raised:
+        await provider.generate("p", GenerationOptions())
+    assert raised.value.retry_after == 5.0

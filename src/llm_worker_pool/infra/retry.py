@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -22,11 +23,17 @@ async def with_backoff(
     *,
     max_attempts: int,
     backoff_base_seconds: float,
+    deadline: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> T:
     """Call func(), retry up to max_attempts times if a transient error occurs.
 
-    Backoff: backoff_base_seconds * 2**attempt + small jitter. Non-transient
-    errors (ConfigurationError, InvalidResponseError, ...) are not
+    Backoff: the error's `retry_after` when the provider said how long it is blocked
+    (a 429 with Retry-After/retryDelay), else backoff_base_seconds * 2**attempt; plus
+    small jitter. A wait that would end at or after `deadline` (a `clock()` value) is
+    not slept: the last error is raised at once, so the fallback chain moves on instead
+    of four blind retries burning the tier's time on a key known to be locked.
+    Non-transient errors (ConfigurationError, InvalidResponseError, ...) are not
     caught here - they will be raised immediately on the first failure.
     """
 
@@ -38,7 +45,11 @@ async def with_backoff(
             last_error = exc
             if attempt == max_attempts - 1:
                 break
-            delay = backoff_base_seconds * (2**attempt) + random.uniform(0, 0.1)
+            hinted = getattr(exc, "retry_after", None)
+            base = hinted if hinted is not None else backoff_base_seconds * (2**attempt)
+            delay = base + random.uniform(0, 0.1)
+            if deadline is not None and clock() + delay >= deadline:
+                break
             await asyncio.sleep(delay)
 
     assert last_error is not None

@@ -21,7 +21,7 @@ from llm_worker_pool.domain.exceptions import (
 from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
 from llm_worker_pool.domain.token_estimate import estimate_prompt_tokens
 from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
-from llm_worker_pool.infra.quota_tracker import QuotaTracker
+from llm_worker_pool.infra.quota_tracker import QuotaTracker, parse_retry_after
 
 
 class OpenAICompatibleProvider:
@@ -254,17 +254,27 @@ class OpenAICompatibleProvider:
 
         latency_ms = (time.monotonic() - start) * 1000
 
+        retry_after: float | None = None
         if self._quota:
             self._quota.observe_headers(key, response.headers)
-            if response.status_code == 429:
-                self._quota.observe_rate_limited(key, response.headers, response.text)
+        if response.status_code == 429 and self._quota and self._quota.enabled:
+            blocked = self._quota.observe_rate_limited(key, response.headers, response.text)
+            if blocked is not None:
+                # Across all keys, not just this one: the retry picks another key, so it
+                # need only wait for the first key that is free.
+                retry_after = self._quota.wait_until_servable(
+                    self._api_keys, self._estimate(prompt, options)
+                )
+        elif response.status_code == 429:
+            retry_after = parse_retry_after(response.headers.get("retry-after"))
 
         if response.status_code != 200:
             if self._circuit_breaker:
                 self._circuit_breaker.record_failure(key, response.status_code)
             if response.status_code >= 500 or response.status_code == 429:
                 raise ProviderUnavailableError(
-                    f"{self._provider_name} returned status {response.status_code}: {response.text[:500]}"
+                    f"{self._provider_name} returned status {response.status_code}: {response.text[:500]}",
+                    retry_after=retry_after,
                 )
             else:
                 raise InvalidResponseError(

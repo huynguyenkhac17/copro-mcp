@@ -153,6 +153,33 @@ class QuotaTracker:
         waits = [max(0.0, self._state(k).blocked_until - now) for k in keys]
         return min(waits, default=0.0)
 
+    def wait_until_servable(self, keys: list[str], est_tokens: int) -> float | None:
+        """Seconds until one of `keys` can take a request of `est_tokens` (0 if one can now),
+        or None when no key is held back by anything with a known end - e.g. only by other
+        requests' reservations - so there is no real time to wait for.
+
+        Unlike next_available_in this also counts a key drained by the x-ratelimit-*
+        headers (no explicit block, but no tokens until its window resets), which is how
+        Groq's per-minute token limit shows up."""
+        if not self.enabled or not keys:
+            return 0.0
+        now = self._clock()
+        waits = []
+        for key in keys:
+            if self.can_serve(key, est_tokens):
+                return 0.0
+            state = self._state(key)
+            ready_at = state.blocked_until
+            requests = state.remaining_requests if now < state.requests_reset_at else state.limit_requests
+            if requests is not None and requests - state.reserved_requests <= 0:
+                ready_at = max(ready_at, state.requests_reset_at)
+            tokens = state.remaining_tokens if now < state.tokens_reset_at else state.limit_tokens
+            if tokens is not None and tokens - state.reserved_tokens - self._margin < max(est_tokens, 1):
+                ready_at = max(ready_at, state.tokens_reset_at)
+            if ready_at > now:
+                waits.append(ready_at - now)
+        return min(waits, default=None)
+
     def note_skip(self, key: str) -> None:
         self._state(key).skips += 1
 

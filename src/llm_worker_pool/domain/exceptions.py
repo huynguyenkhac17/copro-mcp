@@ -14,7 +14,15 @@ class ConfigurationError(LocalAIGatewayError):
 
 
 class ProviderUnavailableError(LocalAIGatewayError):
-    """Cannot connect to the provider (e.g. Ollama is not running)."""
+    """Cannot connect to the provider (e.g. Ollama is not running).
+
+    `retry_after` is how long until the provider can take a request again, when it is
+    known (a 429 with Retry-After/retryDelay, or a key drained per the rate-limit
+    headers); 0 means another key is free right now. None = no hint, back off blindly."""
+
+    def __init__(self, message: str = "", *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class RequestTooLargeError(LocalAIGatewayError):

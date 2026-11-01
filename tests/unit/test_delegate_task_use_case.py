@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import pytest
 
@@ -883,3 +884,45 @@ async def test_prompt_under_the_cap_or_every_tier_over_keeps_the_chain():
     result = await use_case.execute(DelegateTaskRequest(task="t " * 200, budget="L2"))
     assert result.success is False
     assert (alone.call_count, lite2.call_count) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_lock_longer_than_the_tier_deadline_falls_back_without_waiting():
+    """A 429 saying "locked for 40s" on a tier with 10s left: no blind retries, no wait."""
+    gemini = NamedFakeProvider(
+        "gemini", responses=[ProviderUnavailableError("429", retry_after=40.0), _ok("gemini")]
+    )
+    lite = NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=10.0),
+    )
+    use_case._config.retry.max_attempts = 4
+    use_case._config.tier_timeout_seconds = 10.0
+
+    start = time.monotonic()
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True and result.provider == "gemini-lite"
+    assert gemini.call_count == 1
+    assert time.monotonic() - start < 1.0
+
+
+@pytest.mark.asyncio
+async def test_short_lock_is_waited_out_on_the_same_tier():
+    gemini = NamedFakeProvider(
+        "gemini", responses=[ProviderUnavailableError("429", retry_after=0.05), _ok("gemini")]
+    )
+    lite = NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"gemini": gemini, "gemini-lite": lite},
+        {"gemini": ["gemini-lite"]},
+        profile=_l3_profile(timeout_seconds=10.0),
+    )
+    use_case._config.retry.max_attempts = 4
+
+    result = await use_case.execute(DelegateTaskRequest(task="task", budget="L2"))
+
+    assert result.success is True and result.provider == "gemini"
+    assert gemini.call_count == 2 and lite.call_count == 0

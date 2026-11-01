@@ -190,3 +190,42 @@ def test_rate_limit_returns_effective_block_not_raw_delay():
     tracker.observe_rate_limited("k", {}, '{"retryDelay": "300s"}')
     # A shorter hint later does not shorten the existing block - and says so.
     assert tracker.observe_rate_limited("k", {"retry-after": "5"}, "") == pytest.approx(300)
+
+
+def test_wait_until_servable_is_zero_while_one_key_is_free():
+    tracker, _ = _tracker()
+    tracker.observe_rate_limited("a", {"retry-after": "30"}, "")
+    assert tracker.wait_until_servable(["a", "b"], 100) == 0.0
+
+
+def test_wait_until_servable_takes_the_earliest_unblocked_key():
+    tracker, clock = _tracker()
+    tracker.observe_rate_limited("a", {"retry-after": "30"}, "")
+    tracker.observe_rate_limited("b", {"retry-after": "12"}, "")
+    assert tracker.wait_until_servable(["a", "b"], 100) == pytest.approx(12)
+    clock.now += 12
+    assert tracker.wait_until_servable(["a", "b"], 100) == 0.0
+
+
+def test_wait_until_servable_counts_a_key_drained_by_headers():
+    tracker, _ = _tracker()
+    tracker.observe_headers(
+        "a", {"x-ratelimit-remaining-tokens": "50", "x-ratelimit-reset-tokens": "9s"}
+    )
+    # No 429 block, but no tokens left until the window resets.
+    assert tracker.wait_until_servable(["a"], 100) == pytest.approx(9)
+
+
+def test_wait_until_servable_none_without_a_timed_block():
+    tracker, clock = _tracker()
+    tracker.observe_headers(
+        "a",
+        {
+            "x-ratelimit-limit-tokens": "500",
+            "x-ratelimit-remaining-tokens": "500",
+            "x-ratelimit-reset-tokens": "1s",
+        },
+    )
+    clock.now += 2  # window already refilled; only the reservation holds the key back
+    tracker.reserve("a", 450)
+    assert tracker.wait_until_servable(["a"], 100) is None

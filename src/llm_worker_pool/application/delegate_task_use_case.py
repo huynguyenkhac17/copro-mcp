@@ -698,6 +698,7 @@ class DelegateTaskUseCase:
                 lambda: provider.generate(prompt, options),
                 max_attempts=self._config.retry.max_attempts,
                 backoff_base_seconds=self._config.retry.backoff_base_seconds,
+                deadline=time.monotonic() + timeout,
             ),
             timeout=timeout,
         )
