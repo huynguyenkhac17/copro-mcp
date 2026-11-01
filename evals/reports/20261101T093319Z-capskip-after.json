@@ -1,0 +1,176 @@
+{
+ "generated_at": "20261101T093319Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "routed"
+  ],
+  "arm_models": {
+   "routed": "openai/gpt-oss-120b+gemini-flash-lite-latest"
+  },
+  "cases": 1,
+  "repeat": 2,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "capskip-after"
+ },
+ "summary": {
+  "routed": {
+   "overall": {
+    "cases": 2,
+    "success": 1.0,
+    "success_n": 2,
+    "bug_recall": 1.0,
+    "bug_recall_n": 2,
+    "bug_precision": 0.5727,
+    "bug_precision_n": 2,
+    "citation_valid_rate": 0.6182,
+    "citation_valid_rate_n": 2,
+    "fallback": 0.0,
+    "fallback_n": 2,
+    "truncated": 0.0,
+    "truncated_n": 2,
+    "latency_p50_ms": 13298.2,
+    "latency_p95_ms": 15587.529999999999,
+    "prompt_tokens": 34752,
+    "completion_tokens": 21857,
+    "thinking_tokens": 8511
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 2,
+     "success": 1.0,
+     "success_n": 2,
+     "bug_recall": 1.0,
+     "bug_recall_n": 2,
+     "bug_precision": 0.5727,
+     "bug_precision_n": 2,
+     "citation_valid_rate": 0.6182,
+     "citation_valid_rate_n": 2,
+     "fallback": 0.0,
+     "fallback_n": 2,
+     "truncated": 0.0,
+     "truncated_n": 2,
+     "latency_p50_ms": 13298.2,
+     "latency_p95_ms": 15587.529999999999,
+     "prompt_tokens": 34752,
+     "completion_tokens": 21857,
+     "thinking_tokens": 8511
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_precision",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.5727
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.6182
+  },
+  {
+   "metric": "fallback",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  },
+  {
+   "metric": "success",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "repeat": 0,
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 10754.5,
+   "prompt_tokens": 17376,
+   "completion_tokens": 10874,
+   "thinking_tokens": 3682,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 0.5454545454545454,
+    "citation_valid_rate": 0.6363636363636364
+   },
+   "judge_errors": {},
+   "warnings": [
+    "review_batched:4",
+    "prompt_cap_skip:groq (~8235 tokens > max_prompt_tokens=6000)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py:252 (quote_not_found, found at line 275)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/application/delegate_task_use_case.py:150 (quote_not_found, found at line 194)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/application/delegate_task_use_case.py:209 (quote_not_found, found at line 258)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py:26 (quote_not_found, found at line 35)"
+   ],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 37,\n      \"severity\": \"high\",\n      \"claim\": \"SQL injection vulnerability due to string interpolation of user input\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default argument 'cart' leads to shared state across calls\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 26,\n      \"severity\": \"medium\",\n      \"claim\": \"Division by zero possible when order has no items\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 31,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination calculation off by one for 1‑based page indexing\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 21,\n      \"severity\": \"medium\",\n      \"claim\": \"Token count can exceed bucket capacity because refill does not cap at capacity\",\n      \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 28,\n      \"severity\": \"medium\",\n      \"claim\": \"Allows request only when tokens > cost, denying exact cost scenarios\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py\",\n      \"line\": 150,\n      \"severity\": \"medium\",\n      \"claim\": \"Empty Content-Type header bypasses validation, so binary or unsafe payloads are treated as text and processed.\",\n      \"evidence_quote\": \"if ctype and not ctype.startswith(_TEXT_TYPES) and \\\"html\\\" not in ctype:\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py\",\n      \"line\": 252,\n      \"severity\": \"high\",\n      \"claim\": \"Path.is_relative_to raises ValueError when the path is not relative to the root, so _is_allowed can raise instead of returning False.\",\n      \"evidence_quote\": \"            resolved.is_relative_to(root)\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 275\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/application/delegate_task_use_case.py\",\n      \"line\": 150,\n      \"severity\": \"medium\",\n      \"claim\": \"Catching built-in TimeoutError fails to catch asyncio.TimeoutError in Python versions prior to 3.11.\",\n      \"evidence_quote\": \"except TimeoutError:\",\n      \"agreed_by\": [\n        \"gemini-lite\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 194\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/application/delegate_task_use_case.py\",\n      \"line\": 209,\n      \"severity\": \"medium\",\n      \"claim\": \"Catching built-in TimeoutError fails to catch asyncio.TimeoutError in Python versions prior to 3.11.\",\n      \"evidence_quote\": \"except (TimeoutError, LocalAIGatewayError):\",\n      \"agreed_by\": [\n        \"gemini-lite\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 258\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py\",\n      \"line\": 26,\n      \"severity\": \"low\",\n      \"claim\": \"Mutable default list for warnings can be shared across ResolvedFileContext instances, causing cross‑instance contamination.\",\n      \"evidence_quote\": \"    warnings: list[str] = []\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 35\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "repeat": 1,
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 15841.9,
+   "prompt_tokens": 17376,
+   "completion_tokens": 10983,
+   "thinking_tokens": 4829,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 0.6,
+    "citation_valid_rate": 0.6
+   },
+   "judge_errors": {},
+   "warnings": [
+    "review_batched:4",
+    "prompt_cap_skip:groq (~8235 tokens > max_prompt_tokens=6000)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py:26 (quote_not_found, found at line 35)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py:244 (quote_not_found, found at line 253)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py:111 (quote_not_found, found at line 115)",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py:135 (quote_not_found, found at line 141)"
+   ],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 34,\n      \"severity\": \"high\",\n      \"claim\": \"SQL injection vulnerability due to string interpolation of customer value\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default argument 'cart' causes shared state across calls\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 29,\n      \"severity\": \"medium\",\n      \"claim\": \"Off‑by‑one error: 1‑based page calculation should use (page‑1)*page_size\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 21,\n      \"severity\": \"medium\",\n      \"claim\": \"Refill logic can exceed bucket capacity because token count is not capped\",\n      \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 25,\n      \"severity\": \"low\",\n      \"claim\": \"Division by zero possible when order has no items\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 28,\n      \"severity\": \"low\",\n      \"claim\": \"Condition uses '>' instead of '>=' causing denial when tokens equal cost\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py\",\n      \"line\": 26,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default list for warnings is shared across ResolvedFileContext instances, causing warnings from one resolution to appear in others\",\n      \"evidence_quote\": \"    warnings: list[str] = []\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 35\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py\",\n      \"line\": 244,\n      \"severity\": \"medium\",\n      \"claim\": \"After a timeout, the subprocess is killed with proc.kill() but not awaited, potentially leaving a zombie process.\",\n      \"evidence_quote\": \"proc.kill()\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 253\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py\",\n      \"line\": 111,\n      \"severity\": \"low\",\n      \"claim\": \"If allow_private_hosts is True, host resolution is skipped, so unresolvable private hosts can pass the check and later cause fetch failures.\",\n      \"evidence_quote\": \"if self._allow_private:\\n            return None\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 115\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py\",\n      \"line\": 135,\n      \"severity\": \"low\",\n      \"claim\": \"When a redirect lacks a next request, target is set to an empty string, causing _check_url to flag an unsupported scheme on redirects.\",\n      \"evidence_quote\": \"target = str(resp.next_request.url) if resp.next_request else \\\"\\\"\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 141\n    }\n  ]\n}"
+  }
+ ]
+}

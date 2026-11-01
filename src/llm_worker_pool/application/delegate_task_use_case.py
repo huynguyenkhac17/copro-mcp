@@ -31,7 +31,11 @@ from llm_worker_pool.domain.models import (
 from llm_worker_pool.domain.output_parser import OutputParser
 from llm_worker_pool.domain.prompt_builder import PromptBuilder
 from llm_worker_pool.domain.rag_indexer import RagIndexer
-from llm_worker_pool.domain.token_estimate import CONTEXT_RESERVE_RATIO, estimate_tokens
+from llm_worker_pool.domain.token_estimate import (
+    CONTEXT_RESERVE_RATIO,
+    estimate_prompt_tokens,
+    estimate_tokens,
+)
 from llm_worker_pool.domain.validators import (
     CitationValidator,
     build_json_repair_prompt,
@@ -164,11 +168,19 @@ class DelegateTaskUseCase:
         quota_skips: list[str] = []
         # Tiers skipped at startup (e.g. their API keys are unset) are dropped up front so
         # "is there a later tier?" below only counts tiers that can actually answer.
-        tiers = [self._providers[name] for name in chain if name in self._providers]
+        names = [name for name in chain if name in self._providers]
+        configured = list(names)
+        names, prompt_cap_skips = self._drop_over_prompt_cap(names, built.user_prompt, options)
+        tiers = [self._providers[name] for name in names]
         for index, tier in enumerate(tiers):
             has_next = index < len(tiers) - 1
             tier_timeout = self._tier_timeout(timeout, has_next)
-            tier_options = self._tier_options(options, is_fallback=index > 0)
+            # Reasoning follows the tier's place in the configured chain, so dropping an
+            # over-cap tier changes no answer: on review-large-l3 (2026-11-01) lite at
+            # full reasoning took +5.5s for precision 0.67 -> 0.57, recall 1.00 both.
+            tier_options = self._tier_options(
+                options, is_fallback=configured.index(names[index]) > 0
+            )
             if has_next:
                 # Skip a tier already known to be out of quota or hanging. The last tier is
                 # always tried: failing fast there would only turn a slow answer into none.
@@ -253,7 +265,8 @@ class DelegateTaskUseCase:
                 pass  # keep the original (empty) response, fall through to the warning below
 
         warnings = [
-            *file_warnings, *history_warnings, *redaction_warnings, *built.warnings, *quota_skips
+            *file_warnings, *history_warnings, *redaction_warnings, *built.warnings,
+            *prompt_cap_skips, *quota_skips,
         ]
         if failures:
             warnings.append(
@@ -316,7 +329,8 @@ class DelegateTaskUseCase:
             task=request.task,
             raw_response=response.raw_text,
             task_type=request.task_type,
-            requested_provider=tiers[0].provider_name,
+            # The chain's head even when its cap dropped it (stats count by it).
+            requested_provider=self._providers[configured[0]].provider_name,
             fallback_chain=[t.provider_name for t in tiers[: len(failures) + 1]],
             guardrail_actions=guardrail_actions,
         )
@@ -528,6 +542,29 @@ class DelegateTaskUseCase:
     @property
     def url_fetcher(self) -> UrlContextFetcher | None:
         return self._url_fetcher
+
+    def _drop_over_prompt_cap(
+        self, names: list[str], user_prompt: str, options: GenerationOptions
+    ) -> tuple[list[str], list[str]]:
+        """(tiers to try, prompt_cap_skip warnings). A tier whose max_prompt_tokens this
+        prompt exceeds would refuse it locally anyway (groq: 6000, while most L3 prompts
+        are larger). Calling it anyway logged a failure and made the next tier a
+        "fallback": fallback_used and a logged failure for a call that never left the
+        machine. Dropped up front, the chain starts at the next tier (its reasoning still
+        follows its configured position, see execute).
+        Same estimate as OpenAICompatibleProvider's own check. When every tier is over,
+        the chain is kept so the refusal still reaches the caller."""
+        limits = {name: self.prompt_limit(name) for name in names}
+        if not any(limit is not None for limit in limits.values()):
+            return names, []
+        estimated = estimate_prompt_tokens((options.system_prompt or "") + user_prompt)
+        over = [name for name in names if limits[name] is not None and estimated > limits[name]]
+        if not over or len(over) == len(names):
+            return names, []
+        return [name for name in names if name not in over], [
+            f"prompt_cap_skip:{name} (~{estimated} tokens > max_prompt_tokens={limits[name]})"
+            for name in over
+        ]
 
     def prompt_limit(self, provider_name: str) -> int | None:
         """The provider's `max_prompt_tokens` (None = no per-request cap)."""

@@ -263,7 +263,9 @@ async def test_a_batch_the_provider_refuses_falls_back_alone(tmp_path):
     assert len(lite.prompts) == 1 and "big.py" in lite.prompts[0] and "small.py" not in lite.prompts[0]
     assert result.content["findings"][0]["agreed_by"] == ["lite"]
     assert result.provider == "groq+lite"
-    assert any(w.startswith("fallback_used:lite") for w in result.warnings)
+    # Dropped before the chain ran, so lite answered as a first try, not a fallback.
+    assert any(w.startswith("prompt_cap_skip:groq") for w in result.warnings)
+    assert not any(w.startswith("fallback_used") for w in result.warnings)
 
 
 @pytest.mark.asyncio

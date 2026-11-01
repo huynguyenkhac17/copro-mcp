@@ -11,7 +11,11 @@ from llm_worker_pool.config.settings import (
     AppConfig,
     RetryConfig,
 )
-from llm_worker_pool.domain.exceptions import ConfigurationError, ProviderUnavailableError
+from llm_worker_pool.domain.exceptions import (
+    ConfigurationError,
+    ProviderUnavailableError,
+    RequestTooLargeError,
+)
 from llm_worker_pool.domain.file_context import FileContextResolver
 from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
 from llm_worker_pool.infra.logging import InvocationLogger
@@ -819,3 +823,63 @@ async def test_every_tier_unready_or_failing_reports_the_skip():
     assert result.success is False
     assert "model_unresponsive_locally" in result.error
     assert groq.call_count >= 1
+
+
+def _capped(use_case: DelegateTaskUseCase, name: str, limit: int) -> None:
+    use_case._config.providers[name] = use_case._config.providers[name].model_copy(
+        update={"max_prompt_tokens": limit}
+    )
+
+
+@pytest.mark.asyncio
+async def test_tier_over_its_prompt_cap_is_dropped_before_the_chain_runs():
+    # Every L3 prompt over groq's 6000 used to "fail" on groq locally, so gemini-lite
+    # answered as a fallback: fallback_used and a logged failure for no real call.
+    groq = RecordingProvider("groq", responses=[_ok("groq")])
+    lite = RecordingProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"groq": groq, "gemini-lite": lite},
+        {"groq": ["gemini-lite"]},
+        default_provider="groq",
+        profile=_l3_profile(timeout_seconds=5.0, effort="medium"),
+    )
+    use_case._config.fallback_reasoning_effort = "low"
+    _capped(use_case, "groq", 50)
+    events: list[dict] = []
+    use_case._logger = InvocationLogger(logging.getLogger("test.invocation"), sinks=[events.append])
+
+    result = await use_case.execute(DelegateTaskRequest(task="t " * 200, budget="L2"))
+
+    assert result.success is True and result.provider == "gemini-lite"
+    assert groq.call_count == 0
+    # Still second in the configured chain: reasoning curbed exactly as before.
+    assert lite.seen_options[0].reasoning_effort == "low"
+    assert events[-1]["outcome"] == "success"
+    assert (events[-1]["requested_provider"], events[-1]["fallback_chain"]) == ("groq", ["gemini-lite"])
+    skips = [w for w in result.warnings if w.startswith("prompt_cap_skip:")]
+    assert len(skips) == 1 and skips[0].startswith("prompt_cap_skip:groq (~")
+    assert not any(w.startswith("fallback_used") for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_prompt_under_the_cap_or_every_tier_over_keeps_the_chain():
+    groq = RecordingProvider("groq", responses=[_ok("groq")])
+    lite = RecordingProvider("gemini-lite", responses=[_ok("gemini-lite")])
+    use_case = _chain_use_case(
+        {"groq": groq, "gemini-lite": lite}, {"groq": ["gemini-lite"]}, default_provider="groq",
+    )
+    _capped(use_case, "groq", 5000)
+    result = await use_case.execute(DelegateTaskRequest(task="short", budget="L2"))
+    assert result.provider == "groq" and not any("prompt_cap_skip" in w for w in result.warnings)
+
+    # Both capped and both over: nothing is dropped, the refusal reaches the caller.
+    alone = RecordingProvider("groq", responses=[RequestTooLargeError("groq: too large; skipped")])
+    lite2 = RecordingProvider("gemini-lite", responses=[RequestTooLargeError("lite: too large")])
+    use_case = _chain_use_case(
+        {"groq": alone, "gemini-lite": lite2}, {"groq": ["gemini-lite"]}, default_provider="groq",
+    )
+    _capped(use_case, "groq", 10)
+    _capped(use_case, "gemini-lite", 10)
+    result = await use_case.execute(DelegateTaskRequest(task="t " * 200, budget="L2"))
+    assert result.success is False
+    assert (alone.call_count, lite2.call_count) == (1, 1)

@@ -1,0 +1,170 @@
+{
+ "generated_at": "20261101T093416Z",
+ "meta": {
+  "harness": "on",
+  "arms": [
+   "routed"
+  ],
+  "arm_models": {
+   "routed": "openai/gpt-oss-120b+gemini-flash-lite-latest"
+  },
+  "cases": 1,
+  "repeat": 2,
+  "dataset": [
+   "/data/workspace/mcp/evals/datasets"
+  ],
+  "judge": null,
+  "judge_key_stats": null,
+  "label": "capskip-final"
+ },
+ "summary": {
+  "routed": {
+   "overall": {
+    "cases": 2,
+    "success": 1.0,
+    "success_n": 2,
+    "bug_recall": 1.0,
+    "bug_recall_n": 2,
+    "bug_precision": 0.7619,
+    "bug_precision_n": 2,
+    "citation_valid_rate": 0.9286,
+    "citation_valid_rate_n": 2,
+    "fallback": 0.5,
+    "fallback_n": 2,
+    "truncated": 0.0,
+    "truncated_n": 2,
+    "latency_p50_ms": 7520.1,
+    "latency_p95_ms": 10751.64,
+    "prompt_tokens": 35358,
+    "completion_tokens": 12174,
+    "thinking_tokens": 0
+   },
+   "by_task_type": {
+    "review": {
+     "cases": 2,
+     "success": 1.0,
+     "success_n": 2,
+     "bug_recall": 1.0,
+     "bug_recall_n": 2,
+     "bug_precision": 0.7619,
+     "bug_precision_n": 2,
+     "citation_valid_rate": 0.9286,
+     "citation_valid_rate_n": 2,
+     "fallback": 0.5,
+     "fallback_n": 2,
+     "truncated": 0.0,
+     "truncated_n": 2,
+     "latency_p50_ms": 7520.1,
+     "latency_p95_ms": 10751.64,
+     "prompt_tokens": 35358,
+     "completion_tokens": 12174,
+     "thinking_tokens": 0
+    }
+   }
+  }
+ },
+ "scores": [
+  {
+   "metric": "bug_precision",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.7619
+  },
+  {
+   "metric": "bug_recall",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "citation_valid_rate",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.9286
+  },
+  {
+   "metric": "fallback",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.5
+  },
+  {
+   "metric": "success",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 1.0
+  },
+  {
+   "metric": "truncated",
+   "provider": "routed",
+   "budget": "L3",
+   "task_type": "review",
+   "value": 0.0
+  }
+ ],
+ "rows": [
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "repeat": 0,
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 11110.7,
+   "prompt_tokens": 17483,
+   "completion_tokens": 8981,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 0.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 0.6666666666666666,
+    "citation_valid_rate": 1.0
+   },
+   "judge_errors": {},
+   "warnings": [
+    "review_batched:4",
+    "prompt_cap_skip:groq (~8318 tokens > max_prompt_tokens=6000)"
+   ],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 37,\n      \"severity\": \"high\",\n      \"claim\": \"SQL query concatenates user input directly, exposing SQL injection vulnerability.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default argument `cart = []` leads to shared list across calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 31,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination uses 0‑based start index despite docstring stating 1‑based page, causing off‑by‑one results.\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 21,\n      \"severity\": \"medium\",\n      \"claim\": \"Token count can exceed the bucket capacity because refill does not cap at `capacity`.\",\n      \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py\",\n      \"line\": 35,\n      \"severity\": \"medium\",\n      \"claim\": \"Using a mutable default list for warnings in ResolvedFileContext causes shared state across instances, leading to cross‑request warning leakage.\",\n      \"evidence_quote\": \"    warnings: list[str] = []\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py\",\n      \"line\": 142,\n      \"severity\": \"medium\",\n      \"claim\": \"Redirect handling sets target to an empty string when resp.next_request is None, causing a later request to use an invalid URL\",\n      \"evidence_quote\": \"target = str(resp.next_request.url) if resp.next_request else \\\"\\\"\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 26,\n      \"severity\": \"low\",\n      \"claim\": \"Division by zero occurs when `order.items` is empty.\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 28,\n      \"severity\": \"low\",\n      \"claim\": \"Allowance check uses `>` instead of `>=`, preventing use when tokens exactly equal cost.\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/infra/url_fetcher.py\",\n      \"line\": 153,\n      \"severity\": \"low\",\n      \"claim\": \"If the response lacks a Content-Type header, the code skips content‑type validation and may decode binary data as text\",\n      \"evidence_quote\": \"if ctype and not ctype.startswith(_TEXT_TYPES) and \\\"html\\\" not in ctype:\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    }\n  ]\n}"
+  },
+  {
+   "id": "review-large-l3",
+   "task_type": "review",
+   "budget": "L3",
+   "arm": "routed",
+   "repeat": 1,
+   "provider": "groq+gemini-lite",
+   "model": "openai/gpt-oss-120b+gemini-flash-lite-latest",
+   "latency_ms": 3929.5,
+   "prompt_tokens": 17875,
+   "completion_tokens": 3193,
+   "thinking_tokens": 0,
+   "scores": {
+    "success": 1.0,
+    "fallback": 1.0,
+    "truncated": 0.0,
+    "bug_recall": 1.0,
+    "bug_precision": 0.8571428571428571,
+    "citation_valid_rate": 0.8571428571428571
+   },
+   "judge_errors": {},
+   "warnings": [
+    "review_batched:4",
+    "prompt_cap_skip:groq (~8318 tokens > max_prompt_tokens=6000)",
+    "fallback_used:gemini-lite after groq: groq returned error 413: {\"error\":{\"message\":\"Request too large for model `openai/gpt-oss-120b` in organization `org_REDACTED` service tier...",
+    "citation_unverified:/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py:21 (quote_not_found, found at line 35)"
+   ],
+   "error": null,
+   "answer": "{\n  \"findings\": [\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 34,\n      \"severity\": \"high\",\n      \"claim\": \"SQL query interpolates user input directly, causing SQL injection vulnerability.\",\n      \"evidence_quote\": \"cursor.execute(f\\\"SELECT * FROM orders WHERE customer = '{customer}'\\\")\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 17,\n      \"severity\": \"medium\",\n      \"claim\": \"Mutable default argument 'cart' leads to shared list across calls.\",\n      \"evidence_quote\": \"def add_item(order: Order, price: float, cart: list[float] = []) -> list[float]:\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 25,\n      \"severity\": \"medium\",\n      \"claim\": \"Division by zero possible when order has no items.\",\n      \"evidence_quote\": \"return total / len(order.items)\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/orders.py\",\n      \"line\": 29,\n      \"severity\": \"medium\",\n      \"claim\": \"Pagination uses 1-based page but calculation treats as 0-based, causing off-by-one error.\",\n      \"evidence_quote\": \"start = page * page_size\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 21,\n      \"severity\": \"medium\",\n      \"claim\": \"Refill can increase tokens beyond capacity, allowing unlimited bursts.\",\n      \"evidence_quote\": \"bucket.tokens = bucket.tokens + elapsedSeconds * this.refillPerSecond;\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/evals/datasets/fixtures/rate_limiter.js\",\n      \"line\": 28,\n      \"severity\": \"medium\",\n      \"claim\": \"Allowance check uses '>' instead of '>=' preventing exact-cost allowances.\",\n      \"evidence_quote\": \"if (bucket.tokens > cost) {\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"ok\"\n    },\n    {\n      \"file\": \"/data/workspace/mcp/src/llm_worker_pool/domain/file_context.py\",\n      \"line\": 21,\n      \"severity\": \"medium\",\n      \"claim\": \"Uses a mutable default list for the warnings field in ResolvedFileContext, causing shared state across model instances\",\n      \"evidence_quote\": \"warnings: list[str] = []\",\n      \"agreed_by\": [\n        \"groq\"\n      ],\n      \"citation\": \"quote_not_found\",\n      \"found_at_line\": 35\n    }\n  ]\n}"
+  }
+ ]
+}
