@@ -180,3 +180,24 @@ def test_a_malformed_file_is_ignored_on_read_and_replaced_on_write(machine, cont
 
     a.observe_rate_limited("key-1", {"retry-after": "30"}, "")
     assert not machine.tracker(0.0).can_serve("key-1", 1)
+
+
+def test_a_held_lock_skips_the_write_quickly_instead_of_stalling(tmp_path):
+    # 2026-11-02: msvcrt.locking(LK_LOCK) slept a full second per retry on the event
+    # loop; three processes writing at once stalled a call for 1-7 s.
+    import time
+
+    from llm_worker_pool.infra import shared_key_state as sks
+
+    path = tmp_path / "key_state.json"
+    state = SharedKeyState(path)
+    with open(path.with_name(path.name + ".lock"), "a+") as holder:
+        sks._lock(holder)  # another "process" holds the lock
+        started = time.monotonic()
+        state.update("groq", lambda section: section.setdefault("model_blocked_until", time.time() + 60))
+        elapsed = time.monotonic() - started
+    assert elapsed < 0.9
+    assert not path.exists()  # the write was skipped, not forced through
+
+    state.update("groq", lambda section: section.setdefault("model_blocked_until", time.time() + 60))
+    assert json.loads(path.read_text())["providers"]["groq"]["model_blocked_until"] > 0

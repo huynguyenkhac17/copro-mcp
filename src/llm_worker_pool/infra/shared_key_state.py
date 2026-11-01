@@ -19,9 +19,8 @@ Keys are stored as a truncated SHA-256, never in clear. Times are wall-clock epo
 seconds, since time.monotonic() means nothing in another process after a reboot.
 
 Writes are read-modify-write under a lock on a side file (flock, or msvcrt.locking on
-Windows) and land via os.replace (like stats.json), so a reader never sees a
-half-written file. Every failure
-is swallowed: shared state is an optimisation, a locked or unwritable file only means
+Windows; non-blocking, given up after 0.25 s) and land via os.replace (like
+stats.json), so a reader never sees a half-written file. Every failure is swallowed: shared state is an optimisation, a locked or unwritable file only means
 each process is on its own again, as before.
 """
 
@@ -210,14 +209,31 @@ class SharedKeyState:
         return text
 
 
-def _lock(handle: Any) -> None:
-    """Exclusive lock held until `handle` is closed."""
-    if fcntl is not None:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-    elif msvcrt is not None:
-        handle.seek(0)
-        # Retries for ~10s, then OSError: update() gives up on this write.
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+def _lock(handle: Any, timeout: float = 0.25) -> None:
+    """Exclusive lock held until `handle` is closed; OSError after `timeout` seconds.
+
+    Non-blocking attempts with short sleeps: this runs on the server's event loop,
+    and a blocking lock would freeze every other request of the session while it
+    waits. msvcrt's LK_LOCK sleeps a full second per retry - 3 processes writing at
+    once measured 1-7 s stalls (2026-11-02). Giving up only skips one write, which
+    update() already tolerates."""
+    if fcntl is None and msvcrt is None:
+        return
+    deadline = time.monotonic() + timeout
+    delay = 0.002
+    while True:
+        try:
+            if fcntl is not None:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            else:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 0.02)
 
 
 def _replace(source: str, target: Path, attempts: int = 5) -> None:
