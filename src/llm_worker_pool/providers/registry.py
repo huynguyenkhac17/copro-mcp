@@ -21,7 +21,9 @@ from llm_worker_pool.domain.models import ProviderResponse
 from llm_worker_pool.infra.cache import InMemoryTTLCache
 from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
 from llm_worker_pool.infra.logging import get_logger
+from llm_worker_pool.infra.event_log import configured_path
 from llm_worker_pool.infra.quota_tracker import QuotaTracker
+from llm_worker_pool.infra.shared_key_state import SharedKeyState, default_shared_state_path
 from llm_worker_pool.providers.caching_provider import CachingProvider
 from llm_worker_pool.providers.concurrency_provider import ConcurrencyProvider
 from llm_worker_pool.providers.ollama_provider import OllamaProvider
@@ -99,8 +101,15 @@ def register_provider(type_name: str, builder: ProviderBuilder) -> None:
 class ProviderFactory:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
+        q = config.quota
+        # One file for every provider of this process; each writes under its own name.
+        self._shared = (
+            SharedKeyState(configured_path(q.shared_state_path, default_shared_state_path()))
+            if q.shared_state
+            else None
+        )
 
-    def _new_circuit_breaker(self) -> KeyCircuitBreaker:
+    def _new_circuit_breaker(self, name: str) -> KeyCircuitBreaker:
         # One breaker PER PROVIDER, not one shared by the pool. gemini and gemini-lite
         # use the same API keys, but 503 "model overloaded" and free-tier 429 quotas are
         # per model: with a shared breaker, flash failing 3x on a key quarantined that
@@ -110,9 +119,11 @@ class ProviderFactory:
             failure_threshold=cb.failure_threshold,
             quarantine_seconds=cb.quarantine_seconds,
             enabled=cb.enabled,
+            shared=self._shared,
+            scope=name,
         )
 
-    def _new_quota_tracker(self) -> QuotaTracker:
+    def _new_quota_tracker(self, name: str) -> QuotaTracker:
         # Per provider for the same reason as the breaker: quotas are per model.
         q = self._config.quota
         return QuotaTracker(
@@ -121,6 +132,8 @@ class ProviderFactory:
             timeouts_before_block=q.timeouts_before_block,
             timeout_block_seconds=q.timeout_block_seconds,
             daily_quota_block_seconds=q.daily_quota_block_seconds,
+            shared=self._shared,
+            scope=name,
         )
 
     def create_all(self) -> dict[str, LLMProvider]:
@@ -138,8 +151,8 @@ class ProviderFactory:
                 provider = builder(
                     name,
                     instance_config,
-                    circuit_breaker=self._new_circuit_breaker(),
-                    quota_tracker=self._new_quota_tracker(),
+                    circuit_breaker=self._new_circuit_breaker(name),
+                    quota_tracker=self._new_quota_tracker(name),
                 )
             except TypeError:
                 # A custom builder that does not take these kwargs runs without either -

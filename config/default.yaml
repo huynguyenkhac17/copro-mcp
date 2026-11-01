@@ -229,6 +229,11 @@ quota:
   timeout_block_seconds: 120
   # A 429 naming a per-day quota parks that key this long, not just its retryDelay.
   daily_quota_block_seconds: 3600
+  # Every Claude Code session runs its own server process. Share key blocks,
+  # x-ratelimit counts, model hangs and breaker quarantines between them through
+  # one file (keys stored hashed). Reservations stay per process.
+  shared_state: true
+  # shared_state_path: ~/.llm_worker_pool/key_state.json
 
 metrics:
   # Every server instance appends one JSONL line per call to the shared event log;

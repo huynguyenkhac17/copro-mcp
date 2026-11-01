@@ -17,6 +17,10 @@ naming a per-day limit).
 
 One tracker per provider, like the breaker: quotas and overload are per model, and
 gemini / gemini-lite share the same keys.
+
+With a SharedKeyState (infra/shared_key_state.py), what one server process learns -
+a key blocked by a 429, a drained token window, a model that hangs - also reaches the
+other processes on the machine (one per Claude Code session). Reservations stay local.
 """
 
 from __future__ import annotations
@@ -28,6 +32,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
+
+from llm_worker_pool.infra.shared_key_state import SharedKeyState, key_id
 
 _DURATION_PART_RE = re.compile(r"(\d+(?:\.\d+)?)(ms|h|m|s)")
 _RETRY_DELAY_RE = re.compile(r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"')
@@ -84,6 +90,8 @@ class _KeyQuota:
     limit_tokens: int | None = None
     remaining_tokens: int | None = None
     tokens_reset_at: float = 0.0
+    requests_observed_at: float = float("-inf")
+    tokens_observed_at: float = float("-inf")
     blocked_until: float = 0.0
     reserved_tokens: int = 0
     reserved_requests: int = 0
@@ -100,6 +108,8 @@ class QuotaTracker:
         timeout_block_seconds: float = 120.0,
         daily_quota_block_seconds: float = 3600.0,
         clock: Callable[[], float] = time.monotonic,
+        shared: SharedKeyState | None = None,
+        scope: str = "",
     ) -> None:
         self.enabled = enabled
         self._margin = safety_margin_tokens
@@ -111,20 +121,84 @@ class QuotaTracker:
         self._consecutive_timeouts = 0
         self._model_blocked_until = 0.0
         self._model_blocks = 0
+        self._shared = shared
+        self._scope = scope
+        self._key_by_id: dict[str, str] = {}
+        self._applied_generation = -1
 
     def _state(self, key: str) -> _KeyQuota:
         state = self._keys.get(key)
         if state is None:
             state = self._keys[key] = _KeyQuota()
+            self._key_by_id[key_id(key)] = key
+            self._applied_generation = -1  # shared entries for this key not merged yet
         return state
+
+    # --- shared state ------------------------------------------------------------
+    # Times in the file are wall-clock; this tracker runs on its own (monotonic) clock.
+
+    def _to_wall(self, local: float) -> float:
+        assert self._shared is not None
+        return local - self._clock() + self._shared.now()
+
+    def _sync(self) -> None:
+        """Merge what other processes published: blocks only ever lengthen, and a
+        newer x-ratelimit observation replaces an older one."""
+        if self._shared is None or not self.enabled:
+            return
+        section = self._shared.provider(self._scope)
+        if self._shared.generation == self._applied_generation:
+            return
+        self._applied_generation = self._shared.generation
+        offset = self._clock() - self._shared.now()
+        blocked = section.get("model_blocked_until")
+        if blocked is not None:
+            self._model_blocked_until = max(self._model_blocked_until, blocked + offset)
+        for kid, entry in section.get("keys", {}).items():
+            key = self._key_by_id.get(kid)
+            if key is None:
+                continue
+            state = self._keys[key]
+            if "blocked_until" in entry:
+                state.blocked_until = max(state.blocked_until, entry["blocked_until"] + offset)
+            for kind in ("tokens", "requests"):
+                observed = entry.get(f"{kind}_observed_at")
+                if observed is None or observed + offset <= getattr(state, f"{kind}_observed_at"):
+                    continue
+                setattr(state, f"{kind}_observed_at", observed + offset)
+                setattr(state, f"remaining_{kind}", entry.get(f"remaining_{kind}"))
+                setattr(state, f"{kind}_reset_at", entry.get(f"{kind}_reset_at", 0.0) + offset)
+                if entry.get(f"limit_{kind}") is not None:
+                    setattr(state, f"limit_{kind}", entry[f"limit_{kind}"])
+
+    def _publish_key(self, key: str, fields: dict[str, Any]) -> None:
+        """Write `fields` (wall-clock already) for `key`. `blocked_until` only grows,
+        and a `<kind>_observed_at` older than the file's is not written."""
+        if self._shared is None or not self.enabled:
+            return
+        kid = key_id(key)
+
+        def mutate(section: dict[str, Any]) -> None:
+            entry = section.setdefault("keys", {}).setdefault(kid, {})
+            for kind in ("tokens", "requests"):
+                observed = fields.get(f"{kind}_observed_at")
+                if observed is not None and observed < entry.get(f"{kind}_observed_at", float("-inf")):
+                    for name in (f"{kind}_observed_at", f"remaining_{kind}", f"limit_{kind}", f"{kind}_reset_at"):
+                        fields.pop(name, None)
+            if "blocked_until" in fields:
+                fields["blocked_until"] = max(fields["blocked_until"], entry.get("blocked_until", 0.0))
+            entry.update(fields)
+
+        self._shared.update(self._scope, mutate)
 
     # --- decisions -------------------------------------------------------------
 
     def can_serve(self, key: str, est_tokens: int) -> bool:
         if not self.enabled:
             return True
-        now = self._clock()
         state = self._state(key)
+        self._sync()
+        now = self._clock()
         if state.blocked_until > now:
             return False
 
@@ -145,10 +219,14 @@ class QuotaTracker:
         """Seconds left on a model-wide block (set after repeated hangs), else 0."""
         if not self.enabled:
             return 0.0
+        self._sync()
         return max(0.0, self._model_blocked_until - self._clock())
 
     def next_available_in(self, keys: list[str]) -> float:
         """Shortest wait until one of `keys` is unblocked (0 if one already is)."""
+        for key in keys:
+            self._state(key)
+        self._sync()
         now = self._clock()
         waits = [max(0.0, self._state(k).blocked_until - now) for k in keys]
         return min(waits, default=0.0)
@@ -163,6 +241,9 @@ class QuotaTracker:
         Groq's per-minute token limit shows up."""
         if not self.enabled or not keys:
             return 0.0
+        for key in keys:
+            self._state(key)
+        self._sync()
         now = self._clock()
         waits = []
         for key in keys:
@@ -208,11 +289,19 @@ class QuotaTracker:
         limit = _int_header(headers, "x-ratelimit-limit-requests")
         remaining = _int_header(headers, "x-ratelimit-remaining-requests")
         reset = parse_duration(headers.get("x-ratelimit-reset-requests"))
+        published: dict[str, Any] = {}
         if limit is not None:
             state.limit_requests = limit
         if remaining is not None:
             state.remaining_requests = remaining
             state.requests_reset_at = now + (reset if reset is not None else 60.0)
+            state.requests_observed_at = now
+            published.update(
+                remaining_requests=remaining,
+                limit_requests=state.limit_requests,
+                requests_reset_at=state.requests_reset_at,
+                requests_observed_at=now,
+            )
 
         limit = _int_header(headers, "x-ratelimit-limit-tokens")
         remaining = _int_header(headers, "x-ratelimit-remaining-tokens")
@@ -222,6 +311,21 @@ class QuotaTracker:
         if remaining is not None:
             state.remaining_tokens = remaining
             state.tokens_reset_at = now + (reset if reset is not None else 60.0)
+            state.tokens_observed_at = now
+            published.update(
+                remaining_tokens=remaining,
+                limit_tokens=state.limit_tokens,
+                tokens_reset_at=state.tokens_reset_at,
+                tokens_observed_at=now,
+            )
+        if published and self._shared is not None:
+            self._publish_key(
+                key,
+                {
+                    name: self._to_wall(value) if name.endswith("_at") else value
+                    for name, value in published.items()
+                },
+            )
 
     def observe_rate_limited(
         self, key: str, headers: Mapping[str, str], body: str
@@ -247,6 +351,8 @@ class QuotaTracker:
         now = self._clock()
         state = self._state(key)
         state.blocked_until = max(state.blocked_until, now + delay)
+        if self._shared is not None:
+            self._publish_key(key, {"blocked_until": self._to_wall(state.blocked_until)})
         return state.blocked_until - now
 
     def record_success(self) -> None:
@@ -264,12 +370,22 @@ class QuotaTracker:
         self._model_blocked_until = now + self._timeout_block_seconds
         if not already:
             self._model_blocks += 1
+        if self._shared is not None and self.enabled:
+            until = self._to_wall(self._model_blocked_until)
+
+            def mutate(section: dict[str, Any]) -> None:
+                section["model_blocked_until"] = max(until, section.get("model_blocked_until", 0.0))
+
+            self._shared.update(self._scope, mutate)
         return not already
 
     # --- reporting ---------------------------------------------------------------
 
     def get_stats(self, keys: list[str]) -> dict[str, Any]:
         """Keyed by position in the provider's key list - never by the key itself."""
+        for key in keys:
+            self._state(key)
+        self._sync()
         now = self._clock()
         per_key = []
         for index, key in enumerate(keys):

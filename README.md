@@ -249,6 +249,29 @@ Cache hits are excluded from spend and counted separately as tokens saved.
 
 Counters reset when the server restarts, since they live in the server process.
 
+### Key state shared between sessions
+
+Every Claude Code session starts its own server process. What one of them learns about a
+key — blocked by a 429 (Retry-After / retryDelay / per-day quota), a token window drained
+per Groq's `x-ratelimit-*` headers, a model that keeps hanging, a breaker quarantine —
+goes to `~/.llm_worker_pool/key_state.json`, and the others skip that key or tier too
+instead of collecting their own 429. Keys are stored as a truncated SHA-256, times as
+wall-clock. In-flight reservations and the counters above stay per process;
+`continuation_id` conversations are never written to disk. Turn it off with
+`quota.shared_state: false`.
+
+### Progress
+
+Long calls report progress: over MCP `notifications/progress` for a synchronous call (the
+tier being tried, `map i/N done`, each cross-check arm's calls, `review batch i/N done`),
+and in the `progress` field `check_job_status` returns while an async job runs.
+
+### Retries
+
+A 429 that says how long the key is locked is retried after exactly that long (or at once
+on another free key), and given up immediately when the wait would outlast the tier's
+deadline, so the fallback chain moves on.
+
 ### Prometheus metrics (`worker-metrics`)
 
 Each server instance appends one JSONL line per call (and one per failed tier) to `~/.llm_worker_pool/events.jsonl`. Every line is a single `O_APPEND` write, so several instances (Claude Code, Gemini CLI…) can share the file safely. It rotates to `events.jsonl.1` at `metrics.max_bytes`. Task and response text are never logged unless `logging.debug_log_content` is on. `stats.json` and `/worker` work the same as before.

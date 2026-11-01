@@ -160,6 +160,11 @@ class QuotaConfig(BaseModel):
     timeout_block_seconds: float = 120.0
     daily_quota_block_seconds: float = 3600.0
     """How long a key is parked after a 429 naming a per-day quota."""
+    shared_state: bool = True
+    """Share key blocks, x-ratelimit counts, model hangs and breaker quarantines with
+    the other server processes on this machine (infra/shared_key_state.py)."""
+    shared_state_path: str | None = None
+    """None = ~/.llm_worker_pool/key_state.json."""
 
 
 class MetricsConfig(BaseModel):
