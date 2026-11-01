@@ -87,8 +87,12 @@ providers:
       - GROQ_API_KEY_4
     # Free tier: 30 RPM, 1K RPD, 8K TPM, 200K TPD per key (response headers + docs,
     # 2026-10-07). A request whose prompt alone exceeds 8K tokens is refused with 413,
-    # so larger prompts skip Groq locally and go straight to the next tier. 6000 leaves
-    # headroom: the chars/4 estimate undercounts code and Vietnamese text.
+    # so larger prompts skip Groq locally and go straight to the next tier. Checked with
+    # estimate_prompt_tokens (letters/4 + 0.75 per punctuation or non-ASCII char),
+    # measured 0.89-1.15x of groq's real count (chars/4 was 0.79-1.17x: JSON and
+    # Vietnamese ran over). Groq also counts part of the expected output against
+    # the 8K (413 on 3.6-4.5K-token L3 review prompts, intermittently); capping
+    # max_tokens to fit broke the JSON answers, so a 413 just falls back (2026-11-01).
     max_prompt_tokens: 6000
 
 # Fallback chains, tried in order when a provider still fails after retries

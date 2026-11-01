@@ -19,7 +19,7 @@ from llm_worker_pool.domain.exceptions import (
     ProviderUnavailableError,
 )
 from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
-from llm_worker_pool.domain.token_estimate import estimate_tokens
+from llm_worker_pool.domain.token_estimate import estimate_prompt_tokens
 from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
 from llm_worker_pool.infra.quota_tracker import QuotaTracker
 
@@ -79,7 +79,7 @@ class OpenAICompatibleProvider:
         return self._circuit_breaker.stats_by_position(self._api_keys)
 
     def _estimate(self, prompt: str, options: GenerationOptions) -> int:
-        return estimate_tokens((options.system_prompt or "") + prompt)
+        return estimate_prompt_tokens((options.system_prompt or "") + prompt)
 
     def _servable_keys(self, est_tokens: int) -> list[str]:
         keys = self._api_keys
@@ -149,7 +149,7 @@ class OpenAICompatibleProvider:
 
     async def generate(self, prompt: str, options: GenerationOptions) -> ProviderResponse:
         if self._max_prompt_tokens is not None:
-            estimated = estimate_tokens((options.system_prompt or "") + prompt)
+            estimated = self._estimate(prompt, options)
             if estimated > self._max_prompt_tokens:
                 # Checked before a key is picked: the request never leaves the machine,
                 # so it neither spends quota nor counts against the key's circuit breaker.

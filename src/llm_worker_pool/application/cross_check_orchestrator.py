@@ -32,7 +32,7 @@ from typing import Any
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.domain.finding_merge import findings_of, merge_findings
-from llm_worker_pool.domain.token_estimate import estimate_tokens
+from llm_worker_pool.domain.token_estimate import estimate_prompt_tokens
 from llm_worker_pool.domain.validators import citation_warnings, split_context_files
 
 # System prompt (budget + grounding rules + profile addon + JSON schema) on top of
@@ -200,10 +200,10 @@ class CrossCheckOrchestrator:
         files - groups of whole files that each fit. A single file over the limit is
         sent alone and left to the provider to refuse."""
         limit = self._use_case.prompt_limit(arm)
-        overhead = estimate_tokens(base.task) + _PROMPT_OVERHEAD_TOKENS
+        overhead = estimate_prompt_tokens(base.task) + _PROMPT_OVERHEAD_TOKENS
         if limit is None or not base.context:
             return [base.context]
-        if overhead + estimate_tokens(base.context) <= limit or len(files) < 2:
+        if overhead + estimate_prompt_tokens(base.context) <= limit or len(files) < 2:
             return [base.context]
 
         batches: list[str] = []
@@ -211,7 +211,7 @@ class CrossCheckOrchestrator:
         used = overhead
         for path, body in files.items():
             block = f"--- file: {path} ---\n{body}"
-            cost = estimate_tokens(block)
+            cost = estimate_prompt_tokens(block)
             if current and used + cost > limit:
                 batches.append("\n\n".join(current))
                 current, used = [], overhead

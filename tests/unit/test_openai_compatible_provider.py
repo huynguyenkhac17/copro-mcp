@@ -176,6 +176,43 @@ async def test_prompt_over_max_prompt_tokens_is_refused_before_any_request():
     assert len(calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_prompt_cap_counts_punctuation_heavy_text_higher():
+    # 2026-11-01: JSON a worker had to repair came back ~27% bigger on groq than
+    # len/4, and the repair call (prompt + its system prompt) drew a 413.
+    from llm_worker_pool.domain.exceptions import RequestTooLargeError
+
+    calls: list[httpx.Request] = []
+    provider = OpenAICompatibleProvider(
+        provider_name="groq",
+        endpoint="https://example.invalid/v1",
+        model="m",
+        api_keys=["key-a"],
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda r: calls.append(r) or _ok_response(r))),
+        max_prompt_tokens=1000,
+    )
+    payload = '{"a": [1, 2], "b": {}}, ' * 160  # 3840 chars: len/4 = 960, groq-like ~1300
+    with pytest.raises(RequestTooLargeError):
+        await provider.generate(payload, GenerationOptions())
+    await provider.generate("word " * 700, GenerationOptions())  # 3500 chars of letters: ~700
+    assert len(calls) == 1
+
+
+def test_prompt_estimate_tracks_measured_groq_ratios():
+    from llm_worker_pool.domain.token_estimate import estimate_prompt_tokens, estimate_tokens
+
+    code = "def total(price, qty):\n    return price * qty\n" * 100
+    vietnamese = "Trả lời bằng tiếng Việt, trừ khi người dùng yêu cầu khác. " * 50
+    json_text = '{"id": "review-orders-l3", "scores": {"bug_recall": 1.0}}, ' * 50
+    # Indented code stays near len/4 (groq measured 0.86-1.06x of it).
+    assert 0.8 * estimate_tokens(code) <= estimate_prompt_tokens(code) <= 1.2 * estimate_tokens(code)
+    # Non-ASCII and punctuation weigh more than len/4 gives them.
+    assert estimate_prompt_tokens(vietnamese) > 1.15 * estimate_tokens(vietnamese)
+    assert estimate_prompt_tokens(json_text) > 1.15 * estimate_tokens(json_text)
+    assert estimate_prompt_tokens("") == 0
+
+
 def test_each_provider_gets_its_own_circuit_breaker(monkeypatch):
     from llm_worker_pool.config.settings import AppConfig, ProviderInstanceConfig
     from llm_worker_pool.providers.registry import ProviderFactory
