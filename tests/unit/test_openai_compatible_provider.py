@@ -236,6 +236,22 @@ def test_each_provider_gets_its_own_circuit_breaker(monkeypatch):
     assert lite_cb.is_available("k")  # flash overload must not lock the key for lite
 
 
+def test_factory_records_providers_skipped_for_missing_keys(monkeypatch):
+    from llm_worker_pool.config.settings import AppConfig, ProviderInstanceConfig
+    from llm_worker_pool.providers.registry import ProviderFactory
+
+    monkeypatch.delenv("UNSET_TEST_KEY", raising=False)
+    cfg = AppConfig()
+    cfg.providers = {"cloud": ProviderInstanceConfig(
+        type="openai_compatible", endpoint="https://example.invalid/v1", model="m",
+        api_key_envs=["UNSET_TEST_KEY"],
+    )}
+
+    factory = ProviderFactory(cfg)
+    assert factory.create_all() == {}
+    assert "UNSET_TEST_KEY" in factory.skipped["cloud"]
+
+
 def test_strict_mode_only_for_strict_compatible_schemas():
     # Regression: strict=True with a loose schema made Groq answer HTTP 400 for every
     # json_schema request (found by worker-eval, 2026-10-30).
@@ -339,6 +355,23 @@ async def test_unready_when_every_key_is_parked_and_last_tier_still_sends():
     with pytest.raises(Exception):
         await provider.generate("p", GenerationOptions())
     assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_unready_reason_names_quarantine_not_quota_after_connection_errors():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("certificate verify failed")
+
+    provider = _quota_provider(["key-a", "key-b"], handler)
+    for _ in range(6):  # failure_threshold=3 per key, keys picked round-robin
+        with pytest.raises(ProviderUnavailableError):
+            await provider.generate("p", GenerationOptions())
+
+    reason = provider.unready_reason("p", GenerationOptions())
+    assert reason is not None and reason.startswith("keys_quarantined_locally")
+    assert "quota" not in reason
+    assert "earliest key free in" in reason
+    assert "key-a" not in reason
 
 
 @pytest.mark.asyncio

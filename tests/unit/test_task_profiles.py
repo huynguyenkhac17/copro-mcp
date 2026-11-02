@@ -10,7 +10,7 @@ import pytest
 from llm_worker_pool.application.dto import DelegateTaskRequest
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.config.settings import ProviderInstanceConfig, load_task_profiles
-from llm_worker_pool.domain.exceptions import ConfigurationError
+from llm_worker_pool.domain.exceptions import ConfigurationError, NoUsableContextError
 from llm_worker_pool.domain.file_context import FileContextResolver
 from llm_worker_pool.domain.guardrails import PathDenyList, SecretScanner
 from llm_worker_pool.domain.models import (
@@ -193,12 +193,27 @@ async def test_citations_are_verified_against_files(tmp_path: Path):
 async def test_sensitive_file_is_denied_and_reported(tmp_path: Path):
     env = tmp_path / ".env"
     env.write_text(f"GROQ_API_KEY={FAKE_GROQ_KEY}\n")
+    notes = tmp_path / "notes.txt"
+    notes.write_text("plain notes\n")
     groq = RecordingProvider("groq", ["ok"])
     result = await _use_case({"groq": groq}, tmp_path=tmp_path).execute(
-        DelegateTaskRequest(task="read it", file_paths=[str(env)])
+        DelegateTaskRequest(task="read it", file_paths=[str(env), str(notes)])
     )
     assert FAKE_GROQ_KEY not in groq.prompts[0]
+    assert "plain notes" in groq.prompts[0]
     assert result.guardrail_actions == [f"file_denied_sensitive:{env}"]
+
+
+@pytest.mark.asyncio
+async def test_only_a_sensitive_file_refuses_before_any_call(tmp_path: Path):
+    env = tmp_path / ".env"
+    env.write_text(f"GROQ_API_KEY={FAKE_GROQ_KEY}\n")
+    groq = RecordingProvider("groq", ["ok"])
+    with pytest.raises(NoUsableContextError, match="file_denied_sensitive"):
+        await _use_case({"groq": groq}, tmp_path=tmp_path).execute(
+            DelegateTaskRequest(task="read it", file_paths=[str(env)])
+        )
+    assert groq.prompts == []
 
 
 @pytest.mark.asyncio

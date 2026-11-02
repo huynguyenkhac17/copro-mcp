@@ -57,7 +57,8 @@ class JobManager:
                     success=False,
                     status=JobStatus.FAILED.value,  # type: ignore[arg-type]
                     job_id=job_id,
-                    error=str(exc)
+                    error=str(exc),
+                    warnings=getattr(exc, "warnings", []),
                 )
                 self._cache.set(job_id, failed_result)
 

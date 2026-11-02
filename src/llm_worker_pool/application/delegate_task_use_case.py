@@ -20,7 +20,11 @@ from llm_worker_pool.application.conversation_store import (
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.config.settings import AppConfig
 from llm_worker_pool.domain.exceptions import ConfigurationError, LocalAIGatewayError
-from llm_worker_pool.domain.file_context import FileContextResolver, resolve_request_context
+from llm_worker_pool.domain.file_context import (
+    FileContextResolver,
+    require_file_content,
+    resolve_request_context,
+)
 from llm_worker_pool.domain.guardrails import SecretScanner, format_counts
 from llm_worker_pool.domain.interfaces import LLMProvider
 from llm_worker_pool.domain.models import (
@@ -69,8 +73,11 @@ class DelegateTaskUseCase:
         secret_scanner: SecretScanner | None = None,
         local_providers: list[str] | None = None,
         conversation_store: ConversationStore | None = None,
+        skipped_providers: dict[str, str] | None = None,
     ) -> None:
         self._providers = providers
+        self._skipped_providers = skipped_providers or {}
+        """Configured providers left out at startup -> why (e.g. no API key set)."""
         self._default_provider = default_provider
         self._config = config
         self._budget_profiles = budget_profiles
@@ -107,7 +114,15 @@ class DelegateTaskUseCase:
         provider_name = request.provider or self._routed_provider(request.budget, task_profile)
         provider = self._providers.get(provider_name)
         if not provider:
-            available = ", ".join(sorted(self._providers))
+            available = ", ".join(sorted(self._providers)) or "(none)"
+            skipped = self._skipped_providers.get(provider_name)
+            if skipped:
+                # Configured but not started - almost always a missing API key. Saying
+                # "does not exist" sent fresh installs looking for a typo instead.
+                raise ConfigurationError(
+                    f"Provider '{provider_name}' is configured but was skipped at startup: "
+                    f"{skipped}. Available providers: {available}"
+                )
             raise ConfigurationError(
                 f"Provider '{provider_name}' does not exist. Available providers: {available}"
             )
@@ -133,6 +148,7 @@ class DelegateTaskUseCase:
                 history_warnings.append(
                     f"continuation_history_trimmed:{dropped} oldest turns left out to fit num_ctx"
                 )
+        require_file_content(request.file_paths, combined_context, file_warnings)
         unredacted_context = combined_context  # what the conversation keeps, see conversation_store
         task, combined_context, redaction_warnings = self._guard_input(
             task, combined_context, chain

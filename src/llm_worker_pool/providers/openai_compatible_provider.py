@@ -107,6 +107,18 @@ class OpenAICompatibleProvider:
             return None
         for key in self._api_keys:
             self._quota.note_skip(key)
+        if self._circuit_breaker and not any(
+            self._circuit_breaker.is_available(k) for k in self._api_keys
+        ):
+            # Every key is in quarantine after repeated failures (connection errors,
+            # 5xx...), not out of quota - reporting it as quota sent people chasing
+            # rate limits when the network or the endpoint was the problem.
+            wait = self._circuit_breaker.next_available_in(self._api_keys)
+            hint = f"; earliest key free in {wait:.0f}s" if wait > 0 else ""
+            return (
+                f"keys_quarantined_locally: every {self._provider_name} key is quarantined "
+                f"after repeated failures{hint}"
+            )
         wait = self._quota.next_available_in(self._api_keys)
         hint = f"; earliest key free in {wait:.0f}s" if wait > 0 else ""
         return (

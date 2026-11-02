@@ -26,6 +26,7 @@ from llm_worker_pool.domain.file_selection import (
     split_glob,
     walk_files,
 )
+from llm_worker_pool.domain.exceptions import NoUsableContextError
 from llm_worker_pool.domain.guardrails import PathDenyList
 from llm_worker_pool.domain.token_estimate import estimate_tokens
 
@@ -340,3 +341,16 @@ async def resolve_request_context(
             warnings.extend(fetched.warnings)
     combined = "\n\n".join(part for part in parts if part)
     return combined or None, warnings
+
+
+def require_file_content(
+    file_paths: list[str] | None, context: str | None, warnings: list[str]
+) -> None:
+    """Refuse before any model call when file_paths were the request's only material and
+    none of them could be read (denied, missing, file access disabled...). The model
+    would answer the bare task, and success=true hid the warnings behind that answer."""
+    if file_paths and not context:
+        reasons = "; ".join(warnings) or "no readable content"
+        raise NoUsableContextError(
+            f"None of file_paths could be read: {reasons}", warnings=warnings
+        )

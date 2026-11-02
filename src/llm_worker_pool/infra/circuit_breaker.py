@@ -154,6 +154,13 @@ class KeyCircuitBreaker:
         earliest_key = min(keys, key=lambda k: self._get_state(k).quarantined_until)
         return [earliest_key]
 
+    def next_available_in(self, keys: list[str]) -> float:
+        """Seconds until the first of `keys` leaves quarantine (0 = one is free now)."""
+        if not self.enabled or not keys or any(self.is_available(k) for k in keys):
+            return 0.0
+        earliest = min(self._get_state(k).quarantined_until for k in keys)
+        return max(0.0, earliest - self._clock())
+
     def stats_by_position(self, keys: list[str]) -> dict[str, dict[str, Any]]:
         """Stats for every configured key, labelled `key_<i>` by its position in
         `keys` - the keys themselves are secrets. A key never used yet reports zeros.

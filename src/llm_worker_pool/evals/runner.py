@@ -132,7 +132,13 @@ async def _run_case(
         try:
             result = await execute(request)
         except Exception as exc:  # noqa: BLE001 - a broken case must not end the run
-            result = DelegateTaskResult(success=False, error=f"{type(exc).__name__}: {exc}")
+            result = DelegateTaskResult(
+                success=False,
+                error=f"{type(exc).__name__}: {exc}",
+                # A refused case keeps its file warnings: file_denied/secret_guarded
+                # score from them.
+                warnings=getattr(exc, "warnings", []),
+            )
         wall_ms = (time.monotonic() - started) * 1000
 
     scores = score_case(case, result, context)

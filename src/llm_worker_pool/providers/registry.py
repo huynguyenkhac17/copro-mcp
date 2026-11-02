@@ -108,6 +108,8 @@ class ProviderFactory:
             if q.shared_state
             else None
         )
+        self.skipped: dict[str, str] = {}
+        """Providers left out by the last create_all(), with why (e.g. no API key set)."""
 
     def _new_circuit_breaker(self, name: str) -> KeyCircuitBreaker:
         # One breaker PER PROVIDER, not one shared by the pool. gemini and gemini-lite
@@ -138,6 +140,7 @@ class ProviderFactory:
 
     def create_all(self) -> dict[str, LLMProvider]:
         providers: dict[str, LLMProvider] = {}
+        self.skipped = {}
         for name, instance_config in self._config.providers.items():
             builder = _REGISTRY.get(instance_config.type)
             if builder is None:
@@ -166,11 +169,13 @@ class ProviderFactory:
                     provider = builder(name, instance_config)
                 except ConfigurationError as exc:
                     _logger.warning("Skipping provider '%s': %s", name, exc)
+                    self.skipped[name] = str(exc)
                     continue
             except ConfigurationError as exc:
                 # A provider missing its credentials (e.g. unset api_key_env) should not
                 # take down the whole server - skip it, other providers stay usable.
                 _logger.warning("Skipping provider '%s': %s", name, exc)
+                self.skipped[name] = str(exc)
                 continue
 
             if instance_config.per_key_concurrency is not None:

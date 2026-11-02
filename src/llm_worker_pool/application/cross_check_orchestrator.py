@@ -32,6 +32,7 @@ from typing import Any
 from llm_worker_pool.application import progress
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
+from llm_worker_pool.domain.file_context import require_file_content
 from llm_worker_pool.domain.finding_merge import findings_of, merge_findings
 from llm_worker_pool.domain.token_estimate import estimate_prompt_tokens
 from llm_worker_pool.domain.validators import citation_warnings, split_context_files
@@ -67,6 +68,7 @@ class CrossCheckOrchestrator:
             return result
 
         context, context_warnings = await self._use_case.resolve_context(request)
+        require_file_content(request.file_paths, context, context_warnings)
         base = request.model_copy(
             update={"context": context, "file_paths": None, "urls": None, "provider": None}
         )
@@ -105,6 +107,7 @@ class CrossCheckOrchestrator:
             return await self._use_case.execute(request)
 
         context, context_warnings = await self._use_case.resolve_context(request)
+        require_file_content(request.file_paths, context, context_warnings)
         # provider stays as requested (None = routed): each batch keeps its fallbacks.
         base = request.model_copy(update={"context": context, "file_paths": None, "urls": None})
         files = split_context_files(context)

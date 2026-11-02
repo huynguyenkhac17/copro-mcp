@@ -58,7 +58,8 @@ def _build_use_case(
     config: AppConfig, stats_collector: StatsCollector
 ) -> tuple[DelegateTaskUseCase, FileContextResolver]:
     budget_profiles = load_budget_profiles()
-    providers = ProviderFactory(config).create_all()
+    factory = ProviderFactory(config)
+    providers = factory.create_all()
     stats_collector.breaker_source = lambda: _breaker_stats(providers)
     event_log = None
     if config.metrics.enabled:
@@ -107,6 +108,7 @@ def _build_use_case(
     
     use_case = DelegateTaskUseCase(
         providers=providers,
+        skipped_providers=factory.skipped,
         default_provider=config.default_provider,
         config=config,
         budget_profiles=budget_profiles,
@@ -322,7 +324,12 @@ def build_server(config: AppConfig | None = None) -> MCPServer:
                     return await coro
             except LocalAIGatewayError as exc:
                 _logger.error("delegate_task failed: %s", exc)
-                return DelegateTaskResult(success=False, budget_used=effective_budget, error=str(exc))
+                return DelegateTaskResult(
+                    success=False,
+                    budget_used=effective_budget,
+                    error=str(exc),
+                    warnings=getattr(exc, "warnings", []),
+                )
 
     @server.tool(
         name="check_job_status",

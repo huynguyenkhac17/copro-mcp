@@ -60,6 +60,8 @@ mcp/
   - `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey) (free tier).
 
   A provider whose key is missing is skipped with a warning; the others keep working.
+  A call routed to it fails with `Provider '<name>' is configured but was skipped at
+  startup: ...`, naming the environment variables it looks for.
 - *(Optional)* [Ollama](https://ollama.com) for `provider="ollama"` (content that must
   not leave the machine) and for RAG embeddings (`ollama pull nomic-embed-text`).
 
@@ -195,7 +197,7 @@ LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects", "/srv/repo"]
 
 An item may be a file, a directory (walked recursively) or a glob such as `D:/repo/src/**/*.py`. While walking, `.git`, `node_modules`, `.venv`, build output and lockfiles are skipped, and symlinked or junction directories are never entered. Files are taken most useful first (README, source, tests, docs, then the rest), so when the byte budget runs out the noise is what gets dropped. `max_dir_files`, `max_dir_depth` and `max_dir_entries` cap each item.
 
-Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `DelegateTaskResult.warnings`. Files skipped inside a directory or glob are reported as one count per item.
+Errors (path traversal, file not found, too large, unreadable) are gracefully handled and appended to `DelegateTaskResult.warnings`. Files skipped inside a directory or glob are reported as one count per item. When `file_paths` is the request's only material and none of it can be read, the call fails before any model is asked (`success: false`, error `None of file_paths could be read: ...`, the same warnings attached) instead of returning the model's answer to the bare task.
 
 ### Follow-ups (`continuation_id`)
 
@@ -292,7 +294,10 @@ Every Claude Code session starts its own server process. What one of them learns
 key — blocked by a 429 (Retry-After / retryDelay / per-day quota), a token window drained
 per Groq's `x-ratelimit-*` headers, a model that keeps hanging, a breaker quarantine —
 goes to `~/.llm_worker_pool/key_state.json`, and the others skip that key or tier too
-instead of collecting their own 429. Keys are stored as a truncated SHA-256, times as
+instead of collecting their own 429. A skipped tier says why in `fallback_used`:
+`quota_exhausted_locally` (no key has quota left), `keys_quarantined_locally` (every key
+quarantined by the breaker after repeated failures — connection errors, 5xx) or
+`model_unresponsive_locally` (repeated timeouts). Keys are stored as a truncated SHA-256, times as
 wall-clock. In-flight reservations and the counters above stay per process;
 `continuation_id` conversations are never written to disk. Turn it off with
 `quota.shared_state: false`.

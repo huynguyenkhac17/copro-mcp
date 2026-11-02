@@ -13,6 +13,17 @@ class ConfigurationError(LocalAIGatewayError):
     """Missing/invalid config (provider not found, budget invalid, etc)."""
 
 
+class NoUsableContextError(LocalAIGatewayError):
+    """file_paths were given but none yielded any content, and the request carries no
+    other context: sending the task alone would only get "I don't see any file".
+    `warnings` are the file warnings (file_access_denied:..., file_denied_sensitive:...)
+    so the failed result still carries them."""
+
+    def __init__(self, message: str = "", *, warnings: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.warnings = list(warnings or [])
+
+
 class ProviderUnavailableError(LocalAIGatewayError):
     """Cannot connect to the provider (e.g. Ollama is not running).
 

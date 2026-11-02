@@ -14,6 +14,7 @@ from llm_worker_pool.config.settings import (
 )
 from llm_worker_pool.domain.exceptions import (
     ConfigurationError,
+    NoUsableContextError,
     ProviderUnavailableError,
     RequestTooLargeError,
 )
@@ -272,16 +273,47 @@ async def test_file_paths_are_merged_into_context_sent_to_provider(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_file_paths_without_configured_resolver_warns_disabled():
+async def test_file_paths_without_configured_resolver_refuses_without_calling_model():
     provider = FakeProvider()
     use_case = _use_case(provider, _config(), {"L2": _profile()})  # resolver mac dinh: allowed_roots=[]
 
+    with pytest.raises(NoUsableContextError, match="file_access_disabled"):
+        await use_case.execute(
+            DelegateTaskRequest(task="summarize", budget="L2", file_paths=["D:/not/allowed/read.txt"])
+        )
+    assert provider.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_unreadable_file_paths_still_run_when_other_context_is_given(tmp_path):
+    provider = FakeProvider()
+    resolver = FileContextResolver(allowed_roots=[tmp_path])
+    use_case = _use_case(provider, _config(), {"L2": _profile()}, resolver)
+
     result = await use_case.execute(
-        DelegateTaskRequest(task="summarize", budget="L2", file_paths=["D:/not/allowed/read.txt"])
+        DelegateTaskRequest(task="t", budget="L2", context="inline", file_paths=["/etc/hostname"])
     )
 
-    assert result.success is True
-    assert any(w.startswith("file_access_disabled") for w in result.warnings)
+    assert result.success is True and provider.call_count == 1
+    assert "file_access_denied:/etc/hostname" in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_provider_skipped_at_startup_says_why():
+    use_case = DelegateTaskUseCase(
+        providers={"ollama": FakeProvider()},
+        skipped_providers={"gemini": "requires one of: GEMINI_API_KEY"},
+        default_provider="gemini",
+        config=_config(),
+        budget_profiles={"L2": _profile()},
+        invocation_logger=InvocationLogger(logging.getLogger("test.invocation")),
+    )
+
+    with pytest.raises(ConfigurationError) as exc:
+        await use_case.execute(DelegateTaskRequest(task="t", budget="L2"))
+    message = str(exc.value)
+    assert "skipped at startup" in message and "GEMINI_API_KEY" in message
+    assert "does not exist" not in message
 
 
 class ReasoningProvider(FakeProvider):

@@ -9,7 +9,11 @@ from llm_worker_pool.application.cross_check_orchestrator import CrossCheckOrche
 from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
 from llm_worker_pool.application.dto import DelegateTaskRequest
 from llm_worker_pool.config.settings import AppConfig, RetryConfig
-from llm_worker_pool.domain.exceptions import ProviderUnavailableError, RequestTooLargeError
+from llm_worker_pool.domain.exceptions import (
+    NoUsableContextError,
+    ProviderUnavailableError,
+    RequestTooLargeError,
+)
 from llm_worker_pool.domain.file_context import FileContextResolver
 from llm_worker_pool.domain.models import (
     BudgetProfile,
@@ -381,3 +385,18 @@ async def test_batches_and_arms_report_progress(tmp_path):
     assert [m for _, _, m in events] == [f"review in {n} batches on groq"] + [
         f"review batch {i}/{n} done" for i in range(1, n + 1)
     ]
+
+
+@pytest.mark.asyncio
+async def test_unreadable_files_refuse_before_any_arm_or_batch_runs(tmp_path):
+    groq, lite = ScriptedProvider("groq"), ScriptedProvider("lite")
+    orch, _ = _setup(tmp_path, {"groq": groq, "lite": lite}, groq_limit=1700)
+    outside = ["/etc/hostname"]
+
+    with pytest.raises(NoUsableContextError, match="file_access_denied:/etc/hostname"):
+        await orch.execute(DelegateTaskRequest(task="review", task_type="review", file_paths=outside))
+    with pytest.raises(NoUsableContextError):
+        await orch.execute_single(DelegateTaskRequest(
+            task="review", task_type="review", file_paths=outside, provider="groq", cross_check=False
+        ))
+    assert groq.prompts == [] and lite.prompts == []
