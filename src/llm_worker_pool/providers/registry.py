@@ -86,6 +86,9 @@ def build_openai_compatible(
         per_key_concurrency=config.per_key_concurrency,
         max_prompt_tokens=config.max_prompt_tokens,
         quota_tracker=quota_tracker,
+        send_reasoning_effort=config.send_reasoning_effort,
+        structured_output=config.structured_output,
+        extra_body=config.extra_body,
     )
 
 _REGISTRY: dict[str, ProviderBuilder] = {

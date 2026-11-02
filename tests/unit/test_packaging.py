@@ -1,4 +1,4 @@
-"""The server must start from a wheel install (`uv tool install`, `uvx`), not only
+r"""The server must start from a wheel install (`uv tool install`, `uvx`), not only
 from a source checkout: 2026-11-02 a wheel install failed on startup with
 "Budgets config file not found: ...\Lib\config\budgets.yaml"."""
 
@@ -37,3 +37,30 @@ def test_env_files_checkout_first_then_user_dir(monkeypatch, tmp_path):
 
     monkeypatch.setattr(settings, "_source_checkout_root", lambda: None)  # an installed wheel
     assert settings.env_files() == (tmp_path / "user" / ".env",)
+
+
+def test_new_vendors_are_wired_into_the_fallback_chains_and_ascii():
+    text = (settings.CONFIG_DIR / "default.yaml").read_text(encoding="utf-8")
+    text.encode("ascii")  # the YAML loader uses the platform encoding (cp1252 on Windows)
+    raw = yaml.safe_load(text)
+    for vendor in ("mistral", "deepseek", "openrouter"):
+        assert vendor in raw["providers"]
+        assert all(vendor in chain for name, chain in raw["fallbacks"].items() if name != vendor)
+    assert raw["default_provider"] in raw["providers"]
+    assert raw["rag"]["enabled"] is False  # needs Ollama and the [rag] extra
+
+
+def test_server_starts_without_the_rag_extra(monkeypatch, caplog):
+    import importlib.util
+
+    from llm_worker_pool import server
+    from llm_worker_pool.config.settings import AppConfig
+    from llm_worker_pool.infra.stats import StatsCollector
+
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None if name == "faiss" else real_find_spec(name, *a))
+    config = AppConfig()
+    config.rag.enabled = True
+    use_case, _ = server._build_use_case(config, StatsCollector())
+    assert use_case._rag_indexer is None
+    assert "faiss/numpy are not installed" in caplog.text

@@ -1,5 +1,7 @@
 # LLM Worker Pool
 
+[![CI](https://github.com/huynguyenkhac17/Agentic_Routing/actions/workflows/ci.yml/badge.svg)](https://github.com/huynguyenkhac17/Agentic_Routing/actions/workflows/ci.yml)
+
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-1.2.0+-green.svg)](https://modelcontextprotocol.io/)
 
@@ -55,13 +57,21 @@ mcp/
 
 - [uv](https://docs.astral.sh/uv/) (or Python >= 3.11 with pip).
 - At least one cloud API key. With the shipped config, L1-L3 requests go to Groq
-  first and fall back to Gemini:
-  - `GROQ_API_KEY` from [console.groq.com](https://console.groq.com/keys) (free tier);
-  - `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey) (free tier).
+  first and fall back through the other vendors:
 
-  A provider whose key is missing is skipped with a warning; the others keep working.
-  A call routed to it fails with `Provider '<name>' is configured but was skipped at
-  startup: ...`, naming the environment variables it looks for.
+  | Provider | Key variable | Cost | Notes |
+  |---|---|---|---|
+  | `groq` | `GROQ_API_KEY` | free tier | [console.groq.com](https://console.groq.com/keys); 8K tokens/minute per organization, prompts over ~6K tokens skip it |
+  | `gemini-lite`, `gemini` | `GEMINI_API_KEY` | free tier | [Google AI Studio](https://aistudio.google.com/apikey); quota is per Google Cloud project |
+  | `mistral` | `MISTRAL_API_KEY` | free tier | [console.mistral.ai](https://console.mistral.ai/); low request rate on the free plan |
+  | `deepseek` | `DEEPSEEK_API_KEY` | paid, cheap | [platform.deepseek.com](https://platform.deepseek.com/); 1M context, strong on code; placed after the free tiers |
+  | `openrouter` | `OPENROUTER_API_KEY` | free models | [openrouter.ai](https://openrouter.ai/keys); 50 requests/day (1000 after buying 10 credits) |
+
+  A provider whose key is missing is skipped with a warning and dropped from the
+  chains; the others keep working. A call routed to it explicitly fails with
+  `Provider '<name>' is configured but was skipped at startup: ...`, naming the
+  environment variables it looks for. More keys for the same vendor go in `_2`,
+  `_3`... variables (see `api_key_envs` in `default.yaml`).
 - *(Optional)* [Ollama](https://ollama.com) for `provider="ollama"` (content that must
   not leave the machine) and for RAG embeddings (`ollama pull nomic-embed-text`).
 
@@ -228,6 +238,8 @@ Conversations live in server memory (`conversations:` in `default.yaml`: 1 h TTL
 For example, `review` returns `findings: [{file, line, severity, claim, evidence_quote}]` at L3. Leaving out `task_type` gives exactly the old behaviour. To add a type, add a YAML entry; no code change is needed.
 
 ### Local RAG
+
+RAG is off by default. It needs the `[rag]` extra (faiss, numpy: `uv tool install "llm-worker-pool[rag] @ git+..."` or `pip install -e ".[rag]"`) and a local Ollama; turn it on with `LLM_WORKER_POOL_RAG__ENABLED=true`. Without the extra the server starts with RAG off and logs why.
 
 If `file_paths` includes a directory or glob, `rag.enabled` is `true`, and the files' full text would not fit the budget's context window (`num_ctx` minus the 25% reserve), the server embeds them with `rag.embedding_model` via the Ollama at `rag.embedding_endpoint`. A local FAISS store then picks the `top_k` chunks most relevant to the `task`. Below that size the model gets every file verbatim, which is what review needs. If Ollama is unreachable, the call reports `rag_indexing_failed` and falls back to the full text.
 

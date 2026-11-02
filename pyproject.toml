@@ -1,8 +1,17 @@
 [project]
 name = "llm-worker-pool"
-version = "0.2.0"
-description = "MCP server: LLM Worker Pool - middleware between Claude Code and local/cloud LLM workers (Ollama, Gemini, and future providers)"
+version = "0.3.0"
+description = "MCP server that delegates side tasks from Claude Code to a pool of cloud/local LLM workers (Groq, Gemini, Mistral, DeepSeek, OpenRouter, Ollama) with routing, fallback, quota awareness and guardrails"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development",
+]
+
 dependencies = [
     "mcp>=1.2.0",
     "httpx>=0.27",
@@ -11,15 +20,22 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "jsonschema>=4.20",
-    "numpy>=1.26",
-    "faiss-cpu>=1.8",
 ]
+
+[project.urls]
+Repository = "https://github.com/huynguyenkhac17/Agentic_Routing"
+Changelog = "https://github.com/huynguyenkhac17/Agentic_Routing/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "prometheus_client>=0.20",
+]
+# Local RAG over large directories (rag.enabled, needs Ollama embeddings).
+rag = [
+    "numpy>=1.26",
+    "faiss-cpu>=1.8",
 ]
 # Separate from the server's own dependencies: the MCP server imports neither.
 metrics = [
@@ -39,7 +55,7 @@ worker-metrics = "llm_worker_pool.metrics_exporter:main"
 worker-eval = "llm_worker_pool.evals.runner:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

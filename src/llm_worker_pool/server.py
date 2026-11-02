@@ -31,7 +31,6 @@ from llm_worker_pool.domain.file_context import FileContextResolver
 from llm_worker_pool.domain.guardrails import DEFAULT_DENY_GLOBS, PathDenyList, SecretScanner
 from llm_worker_pool.domain.interfaces import LLMProvider
 from llm_worker_pool.infra.url_fetcher import UrlContextFetcher
-from llm_worker_pool.domain.rag_indexer import RagIndexer
 from llm_worker_pool.infra.cache import InMemoryTTLCache
 from llm_worker_pool.infra.event_log import EventLog, configured_path, default_event_log_path
 from llm_worker_pool.infra.logging import InvocationLogger, configure_logging, get_logger
@@ -52,6 +51,13 @@ def _breaker_stats(providers: dict[str, LLMProvider]) -> dict[str, dict[str, dic
         if stats:
             out[name] = stats
     return out
+
+
+def _rag_dependencies_installed() -> bool:
+    """faiss/numpy come with the optional [rag] extra; without them RAG stays off."""
+    import importlib.util
+
+    return all(importlib.util.find_spec(name) is not None for name in ("faiss", "numpy"))
 
 
 def _build_use_case(
@@ -99,7 +105,14 @@ def _build_use_case(
         )
 
     rag_indexer = None
-    if config.rag.enabled:
+    if config.rag.enabled and not _rag_dependencies_installed():
+        _logger.warning(
+            "rag.enabled is true but faiss/numpy are not installed; RAG is off. "
+            'Install the extra: pip install "llm-worker-pool[rag]"'
+        )
+    elif config.rag.enabled:
+        from llm_worker_pool.domain.rag_indexer import RagIndexer
+
         chunker = Chunker()
         embed_provider = OllamaEmbeddingProvider(
             endpoint=config.rag.embedding_endpoint, model=config.rag.embedding_model

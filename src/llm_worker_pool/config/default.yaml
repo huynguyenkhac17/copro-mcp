@@ -3,7 +3,10 @@
 # LLM_WORKER_POOL_ (e.g., LLM_WORKER_POOL_OLLAMA__MODEL=qwen2.5-coder:7b),
 # or by pointing to a different config file via LLM_WORKER_POOL_CONFIG.
 
-default_provider: gemini
+# Used when a request names no provider and its budget's provider (budget_providers
+# below) is not up, e.g. no GROQ key. gemini-lite rather than flash: since 2026-10-24
+# flash has mostly timed out or 429'd while lite answered (see budget_fallbacks).
+default_provider: gemini-lite
 providers:
   ollama:
     type: ollama
@@ -91,6 +94,49 @@ providers:
     # max_tokens to fit broke the JSON answers, so a 413 just falls back (2026-11-01).
     max_prompt_tokens: 6000
 
+  # --- More vendors, each skipped (with a warning) until its key is set. They sit in
+  # the fallback chains below, so adding a key is enough to widen the free quota.
+  # Model ids change often: list them with GET <endpoint>/models.
+
+  # Mistral La Plateforme. The free "Experiment" plan (phone verification, no card)
+  # has low request rates (~2 RPM per third-party trackers, 2026-11; the console's
+  # Limits page is authoritative) but a large token allowance.
+  # reasoning_effort is not sent: Mistral accepts only high/none, on reasoning
+  # models only, and rejects other values.
+  mistral:
+    type: openai_compatible
+    endpoint: https://api.mistral.ai/v1
+    model: mistral-large-latest
+    api_key_envs:
+      - MISTRAL_API_KEY
+      - MISTRAL_API_KEY_2
+    send_reasoning_effort: false
+
+  # DeepSeek: paid but cheap (deepseek-flash, 2026-11: $0.15-0.30 / 1M input on a
+  # cache miss, $0.60-1.20 / 1M output; off-peak half price), 1M context, strong on
+  # code. Last of the paid-free mix in the chains, so it only spends money when the
+  # free tiers could not answer. Thinking is on by default and takes
+  # reasoning_effort; JSON mode is json_object only (no json_schema).
+  deepseek:
+    type: openai_compatible
+    endpoint: https://api.deepseek.com
+    model: deepseek-flash
+    api_key_envs:
+      - DEEPSEEK_API_KEY
+    structured_output: json_object
+
+  # OpenRouter free models (":free" suffix): 20 RPM and 50 requests/day, 1000/day
+  # once 10 credits were ever bought (2026-11). The free catalogue rotates, so the
+  # model is picked for structured-output support and may need replacing; the
+  # router "openrouter/free" picks a free model at random instead.
+  openrouter:
+    type: openai_compatible
+    endpoint: https://openrouter.ai/api/v1
+    model: nvidia/nemotron-3.5-super-vl:free
+    api_key_envs:
+      - OPENROUTER_API_KEY
+    send_reasoning_effort: false
+
 # Fallback chains, tried in order when a provider still fails after retries
 # (503 overload, 429 quota, timeout, bad key...). The last tier is a different
 # vendor, so even a Google-wide outage is survivable. ollama deliberately has no
@@ -112,13 +158,19 @@ budget_providers:
 # 27/28 L3 jobs on 2026-10-24 timed out on it, and worker-eval on 2026-10-30 got
 # 1/9 answers (92s, the rest 429/timeout) while lite answered 9/9 with full bug
 # recall. Flash stays as the last tier, for when lite itself is down.
+# Providers without a key are dropped from a chain, so the chains can name them all.
+# Order: free tiers first, paid DeepSeek before flash (which rarely answers) and
+# OpenRouter's 50-requests/day free tier last.
 budget_fallbacks:
-  L3: [gemini-lite, gemini]
+  L3: [gemini-lite, deepseek, mistral, gemini, openrouter]
 
 fallbacks:
-  gemini: [gemini-lite, groq]
-  gemini-lite: [groq]
-  groq: [gemini-lite, gemini]
+  gemini: [gemini-lite, groq, mistral, deepseek, openrouter]
+  gemini-lite: [groq, mistral, deepseek, gemini, openrouter]
+  groq: [gemini-lite, mistral, deepseek, gemini, openrouter]
+  mistral: [groq, gemini-lite, deepseek, openrouter]
+  deepseek: [groq, gemini-lite, mistral, openrouter]
+  openrouter: [groq, gemini-lite, mistral, deepseek]
 
 # Cap (seconds) on a tier that still has a fallback behind it; the last tier keeps
 # the budget's full timeout. On 2026-10-06 gemini-flash-latest accepted L3 calls and
@@ -202,8 +254,10 @@ conversations:
 rag:
   # Only used when the full text of the files would not fit the budget's num_ctx
   # (minus the reserve for prompt/answer); below that the model gets every file
-  # verbatim, which beats top_k chunks for review. Needs a local Ollama.
-  enabled: true
+  # verbatim, which beats top_k chunks for review. Off by default: it needs a local
+  # Ollama with the embedding model and the [rag] extra (faiss, numpy). Turn on with
+  # LLM_WORKER_POOL_RAG__ENABLED=true.
+  enabled: false
   embedding_endpoint: http://localhost:11434
   embedding_model: nomic-embed-text
   chunk_size_tokens: 256

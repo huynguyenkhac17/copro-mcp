@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
@@ -84,6 +85,16 @@ class ProviderInstanceConfig(BaseModel):
     vendors with a small per-request ceiling: Groq's free tier allows 8K tokens/minute
     per key and answers a bigger request with 413 (measured 2026-10-07: an 11K-token L3
     prompt was refused, a 3.5K-token L2 prompt passed). None = no limit."""
+    send_reasoning_effort: bool = True
+    """Send the budget's `reasoning_effort`. False for APIs that reject the field or
+    accept fewer values (Mistral: only high/none, and only on reasoning models)."""
+    structured_output: Literal["json_schema", "json_object", "none"] = "json_schema"
+    """How a JSON answer is requested: `json_schema` sends the schema, `json_object`
+    asks for any JSON (DeepSeek knows only that), `none` sends no response_format
+    (models that refuse it). OutputParser validates the answer in every case."""
+    extra_body: dict[str, Any] = Field(default_factory=dict)
+    """Extra top-level request fields for this vendor, e.g. DeepSeek's
+    {thinking: {type: disabled}}. Never overrides a field the adapter sets."""
 
 
 class RetryConfig(BaseModel):

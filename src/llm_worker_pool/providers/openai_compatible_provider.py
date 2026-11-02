@@ -36,8 +36,14 @@ class OpenAICompatibleProvider:
         per_key_concurrency: int | None = None,
         max_prompt_tokens: int | None = None,
         quota_tracker: QuotaTracker | None = None,
+        send_reasoning_effort: bool = True,
+        structured_output: str = "json_schema",
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         self._provider_name = provider_name
+        self._send_reasoning_effort = send_reasoning_effort
+        self._structured_output = structured_output
+        self._extra_body = dict(extra_body or {})
         self._endpoint = endpoint.rstrip("/")
         self._model = model
         self._api_keys = list(api_keys)
@@ -63,7 +69,8 @@ class OpenAICompatibleProvider:
 
     @property
     def thinking_option(self) -> str | None:
-        return "reasoning_effort"
+        # No knob when the field is not sent: a retry that lowers it would change nothing.
+        return "reasoning_effort" if self._send_reasoning_effort else None
 
     @property
     def circuit_breaker(self) -> KeyCircuitBreaker | None:
@@ -212,11 +219,14 @@ class OpenAICompatibleProvider:
         if options.stop:
             payload["stop"] = options.stop
 
-        if options.reasoning_effort:
+        if options.reasoning_effort and self._send_reasoning_effort:
             payload["reasoning_effort"] = options.reasoning_effort
 
-        if options.format:
-            if isinstance(options.format, dict):
+        if options.format and self._structured_output != "none":
+            # json_object for a schema: the backend cannot enforce one (DeepSeek only
+            # knows json_object); the schema is still in the prompt and OutputParser
+            # validates the answer.
+            if isinstance(options.format, dict) and self._structured_output == "json_schema":
                 payload["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {
@@ -229,8 +239,13 @@ class OpenAICompatibleProvider:
                         "strict": _is_strict_compatible(options.format),
                     },
                 }
-            elif options.format == "json":
+            else:
                 payload["response_format"] = {"type": "json_object"}
+
+        # Vendor-specific fields (DeepSeek's thinking switch, OpenRouter's provider
+        # preferences...) from the provider's `extra_body`; never overrides the above.
+        for name, value in self._extra_body.items():
+            payload.setdefault(name, value)
 
         headers = {
             "Authorization": f"Bearer {key}",

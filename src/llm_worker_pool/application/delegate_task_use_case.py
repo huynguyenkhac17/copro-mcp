@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import TYPE_CHECKING
 
 from llm_worker_pool.application import progress
 from llm_worker_pool.application.conversation_store import (
@@ -35,7 +36,8 @@ from llm_worker_pool.domain.models import (
 )
 from llm_worker_pool.domain.output_parser import OutputParser
 from llm_worker_pool.domain.prompt_builder import PromptBuilder
-from llm_worker_pool.domain.rag_indexer import RagIndexer
+if TYPE_CHECKING:  # faiss/numpy are the optional [rag] extra
+    from llm_worker_pool.domain.rag_indexer import RagIndexer
 from llm_worker_pool.domain.token_estimate import (
     CONTEXT_RESERVE_RATIO,
     estimate_prompt_tokens,

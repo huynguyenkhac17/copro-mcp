@@ -5,7 +5,6 @@ from __future__ import annotations
 from llm_worker_pool.config.settings import RagConfig
 from llm_worker_pool.domain.chunker import Chunker
 from llm_worker_pool.domain.interfaces import EmbeddingProvider
-from llm_worker_pool.infra.vector_store import FaissVectorStore
 
 
 class RagIndexer:
@@ -54,6 +53,10 @@ class RagIndexer:
             return ""
             
         dimension = len(embeddings[0])
+        # Imported here: faiss/numpy are the optional [rag] extra (server.py checks
+        # they import before enabling RAG).
+        from llm_worker_pool.infra.vector_store import FaissVectorStore
+
         vector_store = FaissVectorStore(dimension)
         vector_store.add(embeddings, metadata)
         

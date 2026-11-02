@@ -470,3 +470,60 @@ async def test_429_retry_after_header_used_without_a_tracker():
     with pytest.raises(ProviderUnavailableError) as raised:
         await provider.generate("p", GenerationOptions())
     assert raised.value.retry_after == 5.0
+
+
+async def _payload_sent(options: GenerationOptions, **provider_kwargs) -> dict:
+    import json
+
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return _ok_response(request)
+
+    provider = OpenAICompatibleProvider(
+        provider_name="fake", endpoint="https://example.invalid/v1", model="m", api_keys=["k"],
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)), **provider_kwargs,
+    )
+    await provider.generate("p", options)
+    return sent[0]
+
+
+_SCHEMA = {"type": "object", "properties": {"a": {"type": "string"}}}
+
+
+@pytest.mark.asyncio
+async def test_default_payload_keeps_reasoning_effort_and_json_schema():
+    payload = await _payload_sent(GenerationOptions(reasoning_effort="low", format=_SCHEMA))
+    assert payload["reasoning_effort"] == "low"
+    assert payload["response_format"]["type"] == "json_schema"
+
+
+@pytest.mark.asyncio
+async def test_vendor_switches_shape_the_payload():
+    # Mistral rejects reasoning_effort values other than high/none; DeepSeek only
+    # knows json_object; some OpenRouter free models refuse response_format.
+    options = GenerationOptions(reasoning_effort="low", format=_SCHEMA)
+    payload = await _payload_sent(options, send_reasoning_effort=False, structured_output="json_object")
+    assert "reasoning_effort" not in payload
+    assert payload["response_format"] == {"type": "json_object"}
+
+    payload = await _payload_sent(options, structured_output="none")
+    assert "response_format" not in payload
+
+
+@pytest.mark.asyncio
+async def test_extra_body_adds_vendor_fields_without_overriding_the_adapter():
+    payload = await _payload_sent(
+        GenerationOptions(reasoning_effort="low"),
+        extra_body={"thinking": {"type": "disabled"}, "model": "should-not-win"},
+    )
+    assert payload["thinking"] == {"type": "disabled"} and payload["model"] == "m"
+
+
+def test_no_reasoning_knob_when_the_field_is_not_sent():
+    provider = OpenAICompatibleProvider(
+        provider_name="fake", endpoint="https://example.invalid/v1", model="m", api_keys=["k"],
+        send_reasoning_effort=False,
+    )
+    assert provider.thinking_option is None
