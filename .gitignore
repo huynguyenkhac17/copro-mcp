@@ -5,3 +5,6 @@ __pycache__/
 *.egg-info/
 .env
 .venv-eval/
+
+# Progress notes live in the private progress repo (mcp/TIEN_TRINH.md), not here.
+TIEN_TRINH.md

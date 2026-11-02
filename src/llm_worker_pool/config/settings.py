@@ -23,17 +23,36 @@ from pydantic_settings import (
 from llm_worker_pool.domain.exceptions import ConfigurationError
 from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, TaskProfile
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "default.yaml"
-_DEFAULT_BUDGETS_PATH = _REPO_ROOT / "config" / "budgets.yaml"
-_DEFAULT_TASK_PROFILES_PATH = _REPO_ROOT / "config" / "task_profiles.yaml"
+# The YAML defaults ship inside the package (package-data), so an install from a wheel
+# (`uv tool install`, `uvx`) finds them as well as a source checkout does. They used to
+# sit in <repo>/config/ and were looked up from the repo root, which a wheel has not got.
+CONFIG_DIR = Path(__file__).resolve().parent
+_DEFAULT_CONFIG_PATH = CONFIG_DIR / "default.yaml"
+_DEFAULT_BUDGETS_PATH = CONFIG_DIR / "budgets.yaml"
+_DEFAULT_TASK_PROFILES_PATH = CONFIG_DIR / "task_profiles.yaml"
+
+USER_DIR = Path(os.path.expanduser("~")) / ".llm_worker_pool"
+
+
+def _source_checkout_root() -> Path | None:
+    """The repo root when running from a source checkout (src/ layout), else None."""
+    root = Path(__file__).resolve().parents[3]
+    return root if (root / "pyproject.toml").is_file() and (root / "src").is_dir() else None
+
+
+def env_files() -> tuple[Path, ...]:
+    """.env files, highest priority first: the checkout's own (development), then
+    ~/.llm_worker_pool/.env (an installed tool has no repo to put one in)."""
+    root = _source_checkout_root()
+    return tuple(p for p in ((root / ".env") if root else None, USER_DIR / ".env") if p is not None)
 
 # pydantic-settings' own dotenv source only feeds declared AppConfig fields - it never
 # touches os.environ. But provider API keys (api_key_env/api_key_envs) are arbitrary
 # variable names read directly via os.environ.get() in providers/registry.py, so without
 # this they'd be invisible unless exported as real OS environment variables. override=False
 # keeps real env vars taking priority over .env, matching the documented priority order.
-load_dotenv(_REPO_ROOT / ".env", override=False)
+for _env_file in env_files():
+    load_dotenv(_env_file, override=False)
 
 CONFIG_PATH_ENV_VAR = "LLM_WORKER_POOL_CONFIG"
 BUDGETS_PATH_ENV_VAR = "LLM_WORKER_POOL_BUDGETS_CONFIG"
@@ -213,13 +232,14 @@ class EvalConfig(BaseModel):
 class AppConfig(BaseSettings):
     """Root configuration. Priority sources (high -> low):
     init kwargs > real environment variables (LLM_WORKER_POOL_..., nested with
-    '__') > .env file in repo root > default.yaml.
+    '__') > .env files (see env_files) > default.yaml.
     """
 
     model_config = SettingsConfigDict(
         env_prefix="LLM_WORKER_POOL_",
         env_nested_delimiter="__",
-        env_file=_REPO_ROOT / ".env",
+        # pydantic-settings lets a later file win; env_files() lists the strongest first.
+        env_file=tuple(reversed(env_files())),
         yaml_file=_resolve_path(CONFIG_PATH_ENV_VAR, _DEFAULT_CONFIG_PATH),
         extra="ignore",
     )

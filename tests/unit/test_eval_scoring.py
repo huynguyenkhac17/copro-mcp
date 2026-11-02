@@ -79,3 +79,12 @@ def test_bug_precision_and_agreement_rate():
     assert scores["bug_recall"] == 1.0
     assert scores["bug_precision"] == 0.5  # line 30 matches no seeded bug
     assert scores["agreement_rate"] == 0.5
+
+
+def test_reports_mask_the_provider_account_id():
+    # Groq errors name the organization; reports are committed (2026-11-02).
+    from llm_worker_pool.evals.runner import redact_account_ids
+
+    error = "Request too large in organization `org_01abcdefghijklmnopqrstuvwx` on TPM"
+    assert redact_account_ids(error) == "Request too large in organization `org_REDACTED` on TPM"
+    assert redact_account_ids(None) is None

@@ -22,18 +22,11 @@ providers:
     # avoiding the need to manually update when specific model versions are deprecated.
     model: gemini-flash-latest
     # api_key_env: GEMINI_API_KEY
-    # Round-robin across 9 keys. GEMINI_API_KEY is a Windows user-level env var;
-    # the other eight live in .env. load_dotenv runs with override=False so a real
-    # env var always beats .env - never declare the same name twice, or one key
-    # gets counted twice and the rotation is skewed.
-    #
-    # This list previously named GEMINI_API_KEY_1 and _2, but neither variable was
-    # ever set, so the pool was in fact running on a SINGLE key and hit 429 almost
-    # immediately - while the log only said "quota exceeded", never "missing key".
-    #
-    # 2026-09-29: _2 and _5 were replaced after their projects were banned by
-    # Google (403 "Your project has been denied access" - permanent, only a key
-    # from a different project fixes it).
+    # Round-robin across every variable below that is set: GEMINI_API_KEY alone is
+    # enough, _2.._9 add keys (free-tier quota is per Google Cloud project, so extra
+    # keys only help when they come from different projects). Unset names are
+    # skipped. Real env vars beat .env (load_dotenv override=False); never put the
+    # same key under two names, or it is counted twice and the rotation is skewed.
     api_key_envs:
       - GEMINI_API_KEY
       - GEMINI_API_KEY_2
@@ -80,7 +73,10 @@ providers:
     type: openai_compatible
     endpoint: https://api.groq.com/openai/v1
     model: openai/gpt-oss-120b
+    # GROQ_API_KEY alone is enough; _1.._4 add keys. Groq's 8K TPM limit is per
+    # organization, so more keys from the same account do not raise it.
     api_key_envs:
+      - GROQ_API_KEY
       - GROQ_API_KEY_1
       - GROQ_API_KEY_2
       - GROQ_API_KEY_3
@@ -154,9 +150,13 @@ logging:
 
 file_access:
   # List of allowed root directories that can be read via the file_paths parameter of delegate_task.
-  # Empty = feature DISABLED (secure default). Example to enable for a project:
-  #   allowed_roots: ["D:/project/mcp"]
-  allowed_roots: ["D:/"]
+  # Empty = feature DISABLED (secure default): nothing can be read until you say
+  # where. Set it per machine rather than here, e.g. in ~/.llm_worker_pool/.env
+  # (or the repo's .env, or `claude mcp add -e`), as a JSON array:
+  #   LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects"]
+  # A home directory is broader than it looks: deny_globs below do not cover every
+  # credential file (~/.aws/credentials, ~/.netrc, ~/.git-credentials...).
+  allowed_roots: []
   max_file_bytes: 200000
   max_total_bytes: 800000
   # A file_paths item may be a directory (walked recursively) or a glob
@@ -248,8 +248,8 @@ metrics:
   # eval_latest_path: ~/.llm_worker_pool/eval_latest.json  (written by worker-eval)
 
 guardrails:
-  # Never read these through file_paths, even inside allowed_roots (allowed_roots is
-  # the whole D:/ drive, which includes this repo's own .env with every API key).
+  # Never read these through file_paths, even inside allowed_roots (a broad root
+  # such as a whole drive includes this repo's own .env with every API key).
   # A glob without "/" matches the file name, one with "/" the whole path.
   # Omit deny_globs to use the built-in list; extra_deny_globs adds to it.
   # deny_globs: [".env*", "*.pem", "*.key", "*id_rsa*", "*id_ed25519*", "credentials*.json", "**/.git/**"]

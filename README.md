@@ -36,16 +36,16 @@ Provider layer    ProviderFactory → OllamaProvider / OpenAICompatibleProvider
 mcp/
 ├── pyproject.toml
 ├── .env.example
-├── config/
-│   ├── default.yaml        # providers, endpoints, timeouts, retries, logging
-│   └── budgets.yaml        # L1/L2/L3 execution budget definitions
 ├── src/llm_worker_pool/
 │   ├── server.py           # MCP entrypoint, registers delegate_task tool
 │   ├── application/        # Orchestration layer (DTOs, Use Cases, Map-Reduce, Jobs)
 │   ├── domain/             # Core business logic (Interfaces, Prompts, Parsers, RAG)
 │   ├── providers/          # LLM integrations (Ollama, OpenAI-compatible, Cache)
-│   ├── config/             # Pydantic Settings
+│   ├── config/             # Pydantic Settings + the shipped YAML defaults:
+│   │                       #   default.yaml, budgets.yaml, task_profiles.yaml
+│   ├── evals/              # worker-eval
 │   └── infra/              # Logging, Retries, Cache, Vector Store, Stats
+├── evals/                  # eval datasets and reports
 └── tests/
     ├── unit/               # Uses mocked LLMProvider
     └── integration/        # Uses real Ollama (auto-skips if unavailable)
@@ -53,39 +53,81 @@ mcp/
 
 ## Prerequisites
 
-- Python ≥ 3.11
-- [Ollama](https://ollama.com) running locally (`ollama serve`, default `http://localhost:11434`) with a pulled model (default `qwen2.5-coder:7b`):
-  ```bash
-  ollama pull qwen2.5-coder:7b
-  ```
-- To use the `gemini` provider (the **default** provider — cloud reasoning is prioritized over the local model, which is only used for tasks that specifically need to stay local), set the `GEMINI_API_KEY` environment variable. If omitted, the gemini provider is **skipped with a warning**, and the server falls back to the local model.
-- *(Optional)* To use RAG (`rag.enabled: true`), pull an embedding model (default `nomic-embed-text`):
-  ```bash
-  ollama pull nomic-embed-text
-  ```
+- [uv](https://docs.astral.sh/uv/) (or Python >= 3.11 with pip).
+- At least one cloud API key. With the shipped config, L1-L3 requests go to Groq
+  first and fall back to Gemini:
+  - `GROQ_API_KEY` from [console.groq.com](https://console.groq.com/keys) (free tier);
+  - `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey) (free tier).
+
+  A provider whose key is missing is skipped with a warning; the others keep working.
+- *(Optional)* [Ollama](https://ollama.com) for `provider="ollama"` (content that must
+  not leave the machine) and for RAG embeddings (`ollama pull nomic-embed-text`).
 
 ## Installation
 
+Install the server as a uv tool, straight from the repository:
+
 ```bash
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
+uv tool install git+https://github.com/huynguyenkhac17/Agentic_Routing
 ```
+
+This puts `llm-worker-pool`, `worker-stats`, `worker-metrics` and `worker-eval` on your
+PATH. `uv tool upgrade llm-worker-pool` updates it later. Without installing anything,
+`uvx --from git+https://github.com/huynguyenkhac17/Agentic_Routing llm-worker-pool`
+runs it from uv's cache.
+
+Then register it with Claude Code, passing the keys and the directories the server may
+read (`file_paths` is disabled until you name at least one):
+
+```bash
+claude mcp add -s user llm-worker-pool \
+  -e GROQ_API_KEY=gsk_... \
+  -e GEMINI_API_KEY=AIza... \
+  -e 'LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects"]' \
+  -- llm-worker-pool
+```
+
+Instead of `-e`, the same variables can go in `~/.llm_worker_pool/.env`, which the
+server reads at startup (see `.env.example`).
+
+**From a source checkout** (development):
+
+```bash
+git clone https://github.com/huynguyenkhac17/Agentic_Routing && cd Agentic_Routing
+uv venv && uv pip install -e ".[dev]"
+cp .env.example .env    # keys and allowed_roots for this checkout
+claude mcp add -s user llm-worker-pool -- "$PWD/.venv/bin/llm-worker-pool"
+```
+
+On Windows the script is `.venv\Scripts\llm-worker-pool.exe`. Code changes in `src/`
+take effect when the server restarts (`/mcp` in Claude Code reconnects it).
 
 ## Configuration
 
 Everything is configuration-driven. **No code modifications are required.**
 
-- `config/default.yaml` — Providers, timeouts, retries, concurrency, logging, file access, caching, background jobs, and RAG.
-- `config/budgets.yaml` — Execution budget definitions. Add a new budget by simply adding a new entry here.
+- `src/llm_worker_pool/config/default.yaml`: providers, timeouts, retries, concurrency,
+  logging, file access, caching, background jobs and RAG.
+- `src/llm_worker_pool/config/budgets.yaml`: execution budgets. Add a budget by adding
+  an entry.
+- `src/llm_worker_pool/config/task_profiles.yaml`: kinds of work (`task_type`).
 
-You can override settings via environment variables (prefix `LLM_WORKER_POOL_`, use `__` for nested fields) or via a `.env` file at the repository root. Priority (highest to lowest):
-`init kwargs > real environment variables > .env file > default.yaml`
+These ship inside the package. To change them for an installed tool, copy one and
+point the server at the copy with `LLM_WORKER_POOL_CONFIG`,
+`LLM_WORKER_POOL_BUDGETS_CONFIG` or `LLM_WORKER_POOL_TASK_PROFILES_CONFIG`. Single
+settings are overridden with environment variables (prefix `LLM_WORKER_POOL_`, `__` for
+nested fields, e.g. `LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS`). Priority (highest
+to lowest):
+`init kwargs > real environment variables > .env files > default.yaml`
 
-> Note: provider API key variables (`api_key_env`/`api_key_envs`, e.g. `GEMINI_API_KEY`) follow the same priority but are a special case: their variable *names* are arbitrary (whatever you write in `default.yaml`), not `LLM_WORKER_POOL_`-prefixed settings. `.env` is loaded via `python-dotenv` directly into the process environment at startup, so setting them there works exactly like exporting real OS environment variables — a real OS env var of the same name still wins if both are set.
+The `.env` files are the checkout's own `<repo>/.env` (when running from a source
+checkout) and then `~/.llm_worker_pool/.env`.
+
+> Note: provider API key variables (`api_key_env`/`api_key_envs`, e.g. `GEMINI_API_KEY`) follow the same priority but are a special case: their variable *names* are arbitrary (whatever you write in `default.yaml`), not `LLM_WORKER_POOL_`-prefixed settings. The `.env` files are loaded via `python-dotenv` directly into the process environment at startup, so setting them there works exactly like exporting real OS environment variables. A real OS env var of the same name still wins if both are set.
 
 ### Providers
 
-`config/default.yaml` declares multiple providers simultaneously. Each provider has a name and a `type` (the implementation class in `providers/registry.py`):
+`default.yaml` declares multiple providers simultaneously. Each provider has a name and a `type` (the implementation class in `providers/registry.py`):
 
 ```yaml
 default_provider: gemini
@@ -143,14 +185,13 @@ passing as a clean success.
 
 ### Direct File Access (`file_paths`)
 
-Instead of Claude reading files and pasting them into the prompt (wasting tokens), the server can read files directly via absolute paths. This is **disabled by default** for safety. Configure the allowed directories in `config/default.yaml`:
+Instead of Claude reading files and pasting them into the prompt (wasting tokens), the server can read files directly via absolute paths. This is **disabled by default** for safety: the shipped `allowed_roots` is empty. Name the directories per machine, as a JSON array:
 
-```yaml
-file_access:
-  allowed_roots: ["D:/project/mcp"]   # Empty = disabled
-  max_file_bytes: 200000              # Limit per file
-  max_total_bytes: 800000             # Limit per invocation
+```bash
+LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects", "/srv/repo"]
 ```
+
+`max_file_bytes` (200 KB per file) and `max_total_bytes` (800 KB per call) cap what is read. Keep the roots narrow: the deny-list below blocks `.env*`, keys and `.git`, but not every credential file a home directory can hold (`~/.aws/credentials`, `~/.netrc`, `~/.git-credentials`...).
 
 An item may be a file, a directory (walked recursively) or a glob such as `D:/repo/src/**/*.py`. While walking, `.git`, `node_modules`, `.venv`, build output and lockfiles are skipped, and symlinked or junction directories are never entered. Files are taken most useful first (README, source, tests, docs, then the rest), so when the byte budget runs out the noise is what gets dropped. `max_dir_files`, `max_dir_depth` and `max_dir_entries` cap each item.
 
@@ -160,11 +201,11 @@ Errors (path traversal, file not found, too large, unreadable) are gracefully ha
 
 Every answer carries a `continuation_id`. Pass it back with a new `task` to follow up without resending the context. This is useful after `output_truncated_at_max_tokens` (`task="continue"`), or to ask a second question about the same files. The server replays the conversation's context and earlier turns as a transcript, and older turns are dropped first when they do not fit `num_ctx`. Provider, budget, task_type, output_format and json_schema are inherited unless you set them to another value (leaving one out, or passing null, keeps the inherited value; start a new conversation to drop a task_type). New `context`/`file_paths`/`urls` are added to the conversation.
 
-Conversations live in server memory (`conversations:` in `config/default.yaml`: 1 h TTL, 50 conversations, 20 turns). After expiry or a restart the call fails with `continuation_not_found`. A follow-up always runs on one provider, and it cannot be combined with `map_reduce`.
+Conversations live in server memory (`conversations:` in `default.yaml`: 1 h TTL, 50 conversations, 20 turns). After expiry or a restart the call fails with `continuation_not_found`. A follow-up always runs on one provider, and it cannot be combined with `map_reduce`.
 
 ### Guardrails
 
-`allowed_roots` can be a whole drive, so two more checks sit on top of it (`guardrails` in `config/default.yaml`):
+`allowed_roots` can be a whole drive, so two more checks sit on top of it (`guardrails` in `default.yaml`):
 
 - **Deny-list.** Files matching `.env*`, `*.pem`, `*.key`, `*id_rsa*`, `*id_ed25519*`, `credentials*.json` or `**/.git/**` are never read, even when a directory is listed or a symlink points at them. The warning is `file_denied_sensitive:<path>`. Use `extra_deny_globs` to add patterns, or `deny_globs` to replace the list.
 - **Secret redaction.** If **any** tier in the fallback chain is a cloud provider, secret-looking literals in the task and context are replaced with `[REDACTED:<kind>]` before the call (`secret_redacted:<kind> xN`). This covers `AIza…`, `gsk_…`, `sk-…`, `ghp_…`, PEM private keys, `password="…"`, `SECRET_TOKEN=…` and `user:pass@` in URLs. Nothing is redacted when the whole chain is local (ollama). Answers are scanned too, and a secret found there is flagged as `secret_in_response:<kind> xN`.
@@ -174,7 +215,7 @@ Conversations live in server memory (`conversations:` in `config/default.yaml`: 
 
 ### Task Types (`task_type`)
 
-`config/task_profiles.yaml` defines kinds of work: `review`, `summarize`, `extract`, `classify`, `explain`, `translate` and `generate`. Each profile can set:
+`task_profiles.yaml` defines kinds of work: `review`, `summarize`, `extract`, `classify`, `explain`, `translate` and `generate`. Each profile can set:
 
 - `system_addon`: an output contract added to the system prompt.
 - `default_budget`, `output_format` and `json_schema`: used only when the caller does not set them.
@@ -190,7 +231,7 @@ If `file_paths` includes a directory or glob, `rag.enabled` is `true`, and the f
 
 ### Response Caching
 
-Responses are cached based on a hash of the final built prompt, generation options, and model. This avoids repeated inference costs for identical queries. The cache is in-memory and configurable in `config/default.yaml`:
+Responses are cached based on a hash of the final built prompt, generation options, and model. This avoids repeated inference costs for identical queries. The cache is in-memory and configurable in `default.yaml`:
 
 ```yaml
 cache:
@@ -213,22 +254,18 @@ A review with the findings contract (`task_type="review"`) that runs on **one** 
 
 ## Registering with Claude Code
 
-The server is installed as an editable package, providing the `llm-worker-pool.exe` console script. Register it with Claude Code (user scope):
-
-```bash
-claude mcp add -s user llm-worker-pool -- "D:\project\mcp\.venv\Scripts\llm-worker-pool.exe"
-```
-
-Because it's installed in editable mode, any source code changes in `src/` will take effect immediately upon server restart without needing to re-register.
+See [Installation](#installation). After changing code or config, `/mcp` in Claude Code
+reconnects the server, which reloads both.
 
 ## Running Tests
 
 ```bash
+# In the source checkout's venv (installed with ".[dev]", see Installation)
 # Unit tests (mocks LLM, does not require Ollama)
-.venv\Scripts\python.exe -m pytest tests/unit -v
+python -m pytest tests/unit
 
 # Integration tests (requires Ollama running - auto-skips if unavailable)
-.venv\Scripts\python.exe -m pytest tests/integration -v
+python -m pytest tests/integration
 ```
 
 ## Usage Stats
@@ -325,7 +362,7 @@ worker-eval --from-report NEW.json --gate BASELINE.json                      # r
 - **Judge.** The judge is `eval.judge_provider` (gemini-lite by default, since gemini-flash was too overloaded to judge on 2026-10-30; override with `--judge-provider`). It is called through the openai client with key rotation, a circuit breaker and a bounded timeout. If the judge's model is also one of the arms, the report flags the self-preference risk.
 - **Deterministic metrics.** `bug_recall` (cited file plus a line within ±3), `citation_valid_rate`, `json_valid`/`json_schema_valid`, `field_accuracy`, `must_contain`, `no_leak`, `file_denied`, fallback/truncation rates, latency p50/p95 and tokens.
 - **Failed calls** (429, timeout) count only towards `success`; quality metrics are averaged over answered cases, so a quota storm does not read as a quality drop.
-- **Routing from eval.** `--emit-routing` writes `config/routing_from_eval.yaml`. For each task type it picks the provider with the best primary metric (review: `bug_recall`, extract/classify: `field_accuracy`, summarize/explain: `faithfulness` or `must_contain`, translate: `factual_correctness`). Only providers that answered at least `--min-success` (0.8) of their cases qualify, and they are compared on the cases all of them answered (so a provider cannot win by failing the hard case), then on success, then on latency. Each pick carries its evidence as a comment. A task type moves away from the provider callers get today (hand-written `preferred_provider`, else the budget's provider) only when the winner leads it by more than `--switch-margin` (0.05) and by more than either provider's run-to-run spread; otherwise the line stays commented out. `--repeat N` runs every case N times per arm: a repeated case counts once at the mean of its answered runs, and the spread is how far each provider's mean moved between runs. The file fills `preferred_provider` in the task profiles, and a value written in `task_profiles.yaml` wins. Review the file before committing it.
+- **Routing from eval.** `--emit-routing` writes `src/llm_worker_pool/config/routing_from_eval.yaml`. For each task type it picks the provider with the best primary metric (review: `bug_recall`, extract/classify: `field_accuracy`, summarize/explain: `faithfulness` or `must_contain`, translate: `factual_correctness`). Only providers that answered at least `--min-success` (0.8) of their cases qualify, and they are compared on the cases all of them answered (so a provider cannot win by failing the hard case), then on success, then on latency. Each pick carries its evidence as a comment. A task type moves away from the provider callers get today (hand-written `preferred_provider`, else the budget's provider) only when the winner leads it by more than `--switch-margin` (0.05) and by more than either provider's run-to-run spread; otherwise the line stays commented out. `--repeat N` runs every case N times per arm: a repeated case counts once at the mean of its answered runs, and the spread is how far each provider's mean moved between runs. The file fills `preferred_provider` in the task profiles, and a value written in `task_profiles.yaml` wins. Review the file before committing it.
 - **Regression gate.** `--gate BASELINE.json` exits 1 when an arm's primary metric for a task type drops by more than `--gate-tolerance` (0.05). A drop in `success` is only printed as a note. `--from-report` applies `--emit-routing`/`--gate` to an existing report without calling any model.
 - **Output.** Reports go to `evals/reports/<timestamp>[-label].{json,md}`. Scores are also merged into `~/.llm_worker_pool/eval_latest.json` for the exporter, so a `--case`/`--task-type` subset run only replaces what it measured.
 
@@ -336,10 +373,10 @@ produced by the command itself rather than generated by the model:
 
 ```markdown
 ---
-description: Xem thống kê LLM Worker Pool
-allowed-tools: Bash(D:/project/mcp/.venv/Scripts/python.exe -m llm_worker_pool.cli:*)
+description: Show LLM Worker Pool usage
+allowed-tools: Bash(worker-stats:*)
 ---
-!`D:/project/mcp/.venv/Scripts/python.exe -m llm_worker_pool.cli`
+!`worker-stats`
 ```
 
 Typing `/worker` prints the current stats. The model only adds a comment when a number
@@ -353,5 +390,5 @@ To **add a new provider type** (e.g., vLLM, llama.cpp):
 2. Create a builder function and register it in `providers/registry.py`.
 3. Add the corresponding block to `default.yaml`.
 
-To **add a new budget profile**: simply add an entry to `config/budgets.yaml`.
+To **add a new budget profile**: simply add an entry to `budgets.yaml`.
 No code changes are required for either!

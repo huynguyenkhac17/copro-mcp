@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -31,7 +32,7 @@ from typing import Any
 from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
 from llm_worker_pool.config.settings import AppConfig
 from llm_worker_pool.domain.validators import split_context_files
-from llm_worker_pool.config.settings import ROUTING_FROM_EVAL_FILENAME, load_task_profiles
+from llm_worker_pool.config.settings import CONFIG_DIR, ROUTING_FROM_EVAL_FILENAME, load_task_profiles
 from llm_worker_pool.evals.dataset import EvalCase, load_cases
 from llm_worker_pool.evals.routing import gate, render_routing_yaml, routing_table
 from llm_worker_pool.evals.scoring import mean, percentile, score_case
@@ -155,11 +156,20 @@ async def _run_case(
         "completion_tokens": result.completion_tokens,
         "thinking_tokens": result.thinking_tokens,
         "scores": scores,
-        "judge_errors": judge_errors,
-        "warnings": result.warnings,
-        "error": result.error,
+        "judge_errors": {m: redact_account_ids(e) for m, e in judge_errors.items()},
+        "warnings": [redact_account_ids(w) for w in result.warnings],
+        "error": redact_account_ids(result.error),
         "answer": result.raw_text or "",
     }
+
+
+_ACCOUNT_ID = re.compile(r"org_[0-9a-z]{20,}")
+
+
+def redact_account_ids(text: str | None) -> str | None:
+    """Provider errors name the account (Groq: "in organization `org_...`"). Reports
+    are committed, so the id is masked: not a secret, but it identifies the owner."""
+    return _ACCOUNT_ID.sub("org_REDACTED", text) if text else text
 
 
 def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -382,9 +392,9 @@ def main(argv: list[str] | None = None) -> None:
                         help="baseline report .json; given twice with no --arm, just diff the two")
     parser.add_argument("--from-report", type=Path, default=None,
                         help="use this report instead of running (for --emit-routing / --gate)")
-    parser.add_argument("--emit-routing", nargs="?", type=Path, const=REPO_ROOT / "config" / ROUTING_FROM_EVAL_FILENAME,
+    parser.add_argument("--emit-routing", nargs="?", type=Path, const=CONFIG_DIR / ROUTING_FROM_EVAL_FILENAME,
                         default=None, help="write the measured provider per task type "
-                        "(default config/routing_from_eval.yaml)")
+                        "(default src/llm_worker_pool/config/routing_from_eval.yaml)")
     parser.add_argument("--min-success", type=float, default=0.8,
                         help="share of cases a provider must answer to be routed to")
     parser.add_argument("--switch-margin", type=float, default=0.05,

@@ -45,6 +45,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# The YAML defaults are read at runtime (config/settings.py): without this a wheel
+# installs the code but not its config, and the server fails on startup.
+llm_worker_pool = ["config/*.yaml"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
