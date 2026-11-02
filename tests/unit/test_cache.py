@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from llm_worker_pool.infra.cache import InMemoryTTLCache
+from copro.infra.cache import InMemoryTTLCache
 
 
 def test_get_set_roundtrip():

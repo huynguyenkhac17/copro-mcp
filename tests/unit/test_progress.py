@@ -5,15 +5,15 @@ import json
 
 import pytest
 
-from llm_worker_pool.application import progress
-from llm_worker_pool.application.dto import DelegateTaskRequest, DelegateTaskResult
-from llm_worker_pool.application.job_manager import JobManager
-from llm_worker_pool.application.map_reduce_orchestrator import MapReduceOrchestrator
-from llm_worker_pool.domain.chunker import Chunker
-from llm_worker_pool.domain.exceptions import ProviderUnavailableError
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions
-from llm_worker_pool.infra.cache import InMemoryTTLCache
+from copro.application import progress
+from copro.application.dto import DelegateTaskRequest, DelegateTaskResult
+from copro.application.job_manager import JobManager
+from copro.application.map_reduce_orchestrator import MapReduceOrchestrator
+from copro.domain.chunker import Chunker
+from copro.domain.exceptions import ProviderUnavailableError
+from copro.domain.file_context import FileContextResolver
+from copro.domain.models import BudgetProfile, GenerationOptions
+from copro.infra.cache import InMemoryTTLCache
 from tests.unit.test_delegate_task_use_case import (
     FakeProvider,
     NamedFakeProvider,
@@ -160,7 +160,7 @@ async def test_async_job_exposes_its_latest_step_until_done():
 async def test_mcp_client_receives_progress_notifications(monkeypatch):
     from mcp.client.client import Client
 
-    from llm_worker_pool import server as server_module
+    from copro import server as server_module
 
     def fake_build(config, stats_collector):
         gemini = NamedFakeProvider("gemini", responses=[ProviderUnavailableError("503")])

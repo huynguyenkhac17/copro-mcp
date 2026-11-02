@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
-from llm_worker_pool.application.dto import DelegateTaskRequest
-from llm_worker_pool.config.settings import AppConfig, load_budget_profiles
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.infra.logging import InvocationLogger
-from llm_worker_pool.providers.registry import ProviderFactory
+from copro.application.delegate_task_use_case import DelegateTaskUseCase
+from copro.application.dto import DelegateTaskRequest
+from copro.config.settings import AppConfig, load_budget_profiles
+from copro.domain.file_context import FileContextResolver
+from copro.infra.logging import InvocationLogger
+from copro.providers.registry import ProviderFactory
 
 
 @pytest.mark.asyncio

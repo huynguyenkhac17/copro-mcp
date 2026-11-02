@@ -3,9 +3,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from llm_worker_pool.domain.exceptions import ProviderUnavailableError
-from llm_worker_pool.domain.models import GenerationOptions
-from llm_worker_pool.providers.openai_compatible_provider import OpenAICompatibleProvider
+from copro.domain.exceptions import ProviderUnavailableError
+from copro.domain.models import GenerationOptions
+from copro.providers.openai_compatible_provider import OpenAICompatibleProvider
 
 
 def _make_provider(api_keys: list[str], handler) -> OpenAICompatibleProvider:
@@ -71,8 +71,8 @@ async def test_multiple_keys_round_robin_in_order():
 
 @pytest.mark.asyncio
 async def test_circuit_breaker_skips_quarantined_key():
-    from llm_worker_pool.domain.exceptions import ProviderUnavailableError
-    from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
+    from copro.domain.exceptions import ProviderUnavailableError
+    from copro.infra.circuit_breaker import KeyCircuitBreaker
 
     cb = KeyCircuitBreaker(failure_threshold=1, quarantine_seconds=60.0)
 
@@ -151,8 +151,8 @@ async def test_per_key_concurrency_parallel_execution():
 
 @pytest.mark.asyncio
 async def test_prompt_over_max_prompt_tokens_is_refused_before_any_request():
-    from llm_worker_pool.domain.exceptions import RequestTooLargeError
-    from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
+    from copro.domain.exceptions import RequestTooLargeError
+    from copro.infra.circuit_breaker import KeyCircuitBreaker
 
     calls: list[httpx.Request] = []
     cb = KeyCircuitBreaker(failure_threshold=1)
@@ -181,7 +181,7 @@ async def test_prompt_over_max_prompt_tokens_is_refused_before_any_request():
 async def test_prompt_cap_counts_punctuation_heavy_text_higher():
     # 2026-11-01: JSON a worker had to repair came back ~27% bigger on groq than
     # len/4, and the repair call (prompt + its system prompt) drew a 413.
-    from llm_worker_pool.domain.exceptions import RequestTooLargeError
+    from copro.domain.exceptions import RequestTooLargeError
 
     calls: list[httpx.Request] = []
     provider = OpenAICompatibleProvider(
@@ -201,7 +201,7 @@ async def test_prompt_cap_counts_punctuation_heavy_text_higher():
 
 
 def test_prompt_estimate_tracks_measured_groq_ratios():
-    from llm_worker_pool.domain.token_estimate import estimate_prompt_tokens, estimate_tokens
+    from copro.domain.token_estimate import estimate_prompt_tokens, estimate_tokens
 
     code = "def total(price, qty):\n    return price * qty\n" * 100
     vietnamese = "Trả lời bằng tiếng Việt, trừ khi người dùng yêu cầu khác. " * 50
@@ -215,8 +215,8 @@ def test_prompt_estimate_tracks_measured_groq_ratios():
 
 
 def test_each_provider_gets_its_own_circuit_breaker(monkeypatch):
-    from llm_worker_pool.config.settings import AppConfig, ProviderInstanceConfig
-    from llm_worker_pool.providers.registry import ProviderFactory
+    from copro.config.settings import AppConfig, ProviderInstanceConfig
+    from copro.providers.registry import ProviderFactory
 
     monkeypatch.setenv("SHARED_TEST_KEY", "k")
     cfg = AppConfig()
@@ -237,8 +237,8 @@ def test_each_provider_gets_its_own_circuit_breaker(monkeypatch):
 
 
 def test_factory_records_providers_skipped_for_missing_keys(monkeypatch):
-    from llm_worker_pool.config.settings import AppConfig, ProviderInstanceConfig
-    from llm_worker_pool.providers.registry import ProviderFactory
+    from copro.config.settings import AppConfig, ProviderInstanceConfig
+    from copro.providers.registry import ProviderFactory
 
     monkeypatch.delenv("UNSET_TEST_KEY", raising=False)
     cfg = AppConfig()
@@ -254,8 +254,8 @@ def test_factory_records_providers_skipped_for_missing_keys(monkeypatch):
 
 def test_strict_mode_only_for_strict_compatible_schemas():
     # Regression: strict=True with a loose schema made Groq answer HTTP 400 for every
-    # json_schema request (found by worker-eval, 2026-10-30).
-    from llm_worker_pool.providers.openai_compatible_provider import _is_strict_compatible
+    # json_schema request (found by copro eval, 2026-10-30).
+    from copro.providers.openai_compatible_provider import _is_strict_compatible
 
     loose = {"type": "object", "required": ["a"], "properties": {"a": {"type": "string"}}}
     strict = {**loose, "additionalProperties": False}
@@ -275,8 +275,8 @@ def test_strict_mode_only_for_strict_compatible_schemas():
 
 import asyncio
 
-from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
-from llm_worker_pool.infra.quota_tracker import QuotaTracker
+from copro.infra.circuit_breaker import KeyCircuitBreaker
+from copro.infra.quota_tracker import QuotaTracker
 
 
 def _quota_provider(api_keys, handler, **tracker_kwargs) -> OpenAICompatibleProvider:

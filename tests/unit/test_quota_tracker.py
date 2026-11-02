@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from llm_worker_pool.infra.quota_tracker import QuotaTracker, parse_duration
+from copro.infra.quota_tracker import QuotaTracker, parse_duration
 
 
 class FakeClock:
@@ -177,7 +177,7 @@ def test_retry_after_http_date():
     from email.utils import format_datetime
     from datetime import datetime, timedelta, timezone
 
-    from llm_worker_pool.infra.quota_tracker import parse_retry_after
+    from copro.infra.quota_tracker import parse_retry_after
 
     when = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=90), usegmt=True)
     assert parse_retry_after(when) == pytest.approx(90, abs=2)

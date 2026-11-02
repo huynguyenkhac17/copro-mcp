@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.domain.guardrails import (
+from copro.domain.file_context import FileContextResolver
+from copro.domain.guardrails import (
     PathDenyList,
     SecretScanner,
     format_counts,
     wrap_untrusted,
 )
-from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions
-from llm_worker_pool.domain.prompt_builder import PromptBuilder
+from copro.domain.models import BudgetProfile, GenerationOptions
+from copro.domain.prompt_builder import PromptBuilder
 
 
 def _symlink_or_skip(link: Path, target: Path) -> None:

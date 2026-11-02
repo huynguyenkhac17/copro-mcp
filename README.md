@@ -1,6 +1,6 @@
-# LLM Worker Pool
+# Copro
 
-[![CI](https://github.com/huynguyenkhac17/Agentic_Routing/actions/workflows/ci.yml/badge.svg)](https://github.com/huynguyenkhac17/Agentic_Routing/actions/workflows/ci.yml)
+[![CI](https://github.com/huynguyenkhac17/copro-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/huynguyenkhac17/copro-mcp/actions/workflows/ci.yml)
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-1.2.0+-green.svg)](https://modelcontextprotocol.io/)
@@ -38,14 +38,14 @@ Provider layer    ProviderFactory → OllamaProvider / OpenAICompatibleProvider
 mcp/
 ├── pyproject.toml
 ├── .env.example
-├── src/llm_worker_pool/
+├── src/copro/
 │   ├── server.py           # MCP entrypoint, registers delegate_task tool
 │   ├── application/        # Orchestration layer (DTOs, Use Cases, Map-Reduce, Jobs)
 │   ├── domain/             # Core business logic (Interfaces, Prompts, Parsers, RAG)
 │   ├── providers/          # LLM integrations (Ollama, OpenAI-compatible, Cache)
 │   ├── config/             # Pydantic Settings + the shipped YAML defaults:
 │   │                       #   default.yaml, budgets.yaml, task_profiles.yaml
-│   ├── evals/              # worker-eval
+│   ├── evals/              # copro eval
 │   └── infra/              # Logging, Retries, Cache, Vector Store, Stats
 ├── evals/                  # eval datasets and reports
 └── tests/
@@ -80,62 +80,77 @@ mcp/
 Install the server as a uv tool, straight from the repository:
 
 ```bash
-uv tool install git+https://github.com/huynguyenkhac17/Agentic_Routing
+uv tool install git+https://github.com/huynguyenkhac17/copro-mcp
 ```
 
-This puts `llm-worker-pool`, `worker-stats`, `worker-metrics` and `worker-eval` on your
-PATH. `uv tool upgrade llm-worker-pool` updates it later. Without installing anything,
-`uvx --from git+https://github.com/huynguyenkhac17/Agentic_Routing llm-worker-pool`
-runs it from uv's cache.
+This puts two commands on your PATH: `copro-mcp`, the MCP server, and `copro`, with
+`copro serve` (the same server), `copro stats`, `copro metrics` and `copro eval`.
+`uv tool upgrade copro-mcp` updates it later. Without installing anything,
+`uvx --from git+https://github.com/huynguyenkhac17/copro-mcp copro-mcp` runs it from
+uv's cache.
 
 Then register it with Claude Code, passing the keys and the directories the server may
 read (`file_paths` is disabled until you name at least one):
 
 ```bash
-claude mcp add -s user llm-worker-pool \
+claude mcp add -s user copro \
   -e GROQ_API_KEY=gsk_... \
   -e GEMINI_API_KEY=AIza... \
-  -e 'LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects"]' \
-  -- llm-worker-pool
+  -e 'COPRO_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects"]' \
+  -- copro-mcp
 ```
 
-Instead of `-e`, the same variables can go in `~/.llm_worker_pool/.env`, which the
+Instead of `-e`, the same variables can go in `~/.copro/.env`, which the
 server reads at startup (see `.env.example`).
 
 **From a source checkout** (development):
 
 ```bash
-git clone https://github.com/huynguyenkhac17/Agentic_Routing && cd Agentic_Routing
+git clone https://github.com/huynguyenkhac17/copro-mcp && cd copro-mcp
 uv venv && uv pip install -e ".[dev]"
 cp .env.example .env    # keys and allowed_roots for this checkout
-claude mcp add -s user llm-worker-pool -- "$PWD/.venv/bin/llm-worker-pool"
+claude mcp add -s user copro -- "$PWD/.venv/bin/copro-mcp"
 ```
 
-On Windows the script is `.venv\Scripts\llm-worker-pool.exe`. Code changes in `src/`
+On Windows the script is `.venv\Scripts\copro-mcp.exe`. Code changes in `src/`
 take effect when the server restarts (`/mcp` in Claude Code reconnects it).
+
+### Upgrading from llm-worker-pool (before 0.4.0)
+
+The project was called `llm-worker-pool`. Until 0.4.x ends the old names still work,
+each with a note on stderr:
+
+- `LLM_WORKER_POOL_*` variables are read as `COPRO_*` when the new name is not set.
+- `~/.llm_worker_pool/` is copied to `~/.copro/` on the first start (the old one is left
+  in place and no longer read).
+- `llm-worker-pool`, `worker-stats`, `worker-metrics` and `worker-eval` run
+  `copro-mcp`, `copro stats`, `copro metrics` and `copro eval`.
+
+Re-register the server under its new name (`claude mcp remove llm-worker-pool`, then
+the `claude mcp add` above); its tools become `mcp__copro__*`.
 
 ## Configuration
 
 Everything is configuration-driven. **No code modifications are required.**
 
-- `src/llm_worker_pool/config/default.yaml`: providers, timeouts, retries, concurrency,
+- `src/copro/config/default.yaml`: providers, timeouts, retries, concurrency,
   logging, file access, caching, background jobs and RAG.
-- `src/llm_worker_pool/config/budgets.yaml`: execution budgets. Add a budget by adding
+- `src/copro/config/budgets.yaml`: execution budgets. Add a budget by adding
   an entry.
-- `src/llm_worker_pool/config/task_profiles.yaml`: kinds of work (`task_type`).
+- `src/copro/config/task_profiles.yaml`: kinds of work (`task_type`).
 
 These ship inside the package. To change them for an installed tool, copy one and
-point the server at the copy with `LLM_WORKER_POOL_CONFIG`,
-`LLM_WORKER_POOL_BUDGETS_CONFIG` or `LLM_WORKER_POOL_TASK_PROFILES_CONFIG`. Single
-settings are overridden with environment variables (prefix `LLM_WORKER_POOL_`, `__` for
-nested fields, e.g. `LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS`). Priority (highest
+point the server at the copy with `COPRO_CONFIG`,
+`COPRO_BUDGETS_CONFIG` or `COPRO_TASK_PROFILES_CONFIG`. Single
+settings are overridden with environment variables (prefix `COPRO_`, `__` for
+nested fields, e.g. `COPRO_FILE_ACCESS__ALLOWED_ROOTS`). Priority (highest
 to lowest):
 `init kwargs > real environment variables > .env files > default.yaml`
 
 The `.env` files are the checkout's own `<repo>/.env` (when running from a source
-checkout) and then `~/.llm_worker_pool/.env`.
+checkout) and then `~/.copro/.env`.
 
-> Note: provider API key variables (`api_key_env`/`api_key_envs`, e.g. `GEMINI_API_KEY`) follow the same priority but are a special case: their variable *names* are arbitrary (whatever you write in `default.yaml`), not `LLM_WORKER_POOL_`-prefixed settings. The `.env` files are loaded via `python-dotenv` directly into the process environment at startup, so setting them there works exactly like exporting real OS environment variables. A real OS env var of the same name still wins if both are set.
+> Note: provider API key variables (`api_key_env`/`api_key_envs`, e.g. `GEMINI_API_KEY`) follow the same priority but are a special case: their variable *names* are arbitrary (whatever you write in `default.yaml`), not `COPRO_`-prefixed settings. The `.env` files are loaded via `python-dotenv` directly into the process environment at startup, so setting them there works exactly like exporting real OS environment variables. A real OS env var of the same name still wins if both are set.
 
 ### Providers
 
@@ -200,7 +215,7 @@ passing as a clean success.
 Instead of Claude reading files and pasting them into the prompt (wasting tokens), the server can read files directly via absolute paths. This is **disabled by default** for safety: the shipped `allowed_roots` is empty. Name the directories per machine, as a JSON array:
 
 ```bash
-LLM_WORKER_POOL_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects", "/srv/repo"]
+COPRO_FILE_ACCESS__ALLOWED_ROOTS=["/home/me/projects", "/srv/repo"]
 ```
 
 `max_file_bytes` (200 KB per file) and `max_total_bytes` (800 KB per call) cap what is read. Keep the roots narrow: the deny-list below blocks `.env*`, keys and `.git`, but not every credential file a home directory can hold (`~/.aws/credentials`, `~/.netrc`, `~/.git-credentials`...).
@@ -239,7 +254,7 @@ For example, `review` returns `findings: [{file, line, severity, claim, evidence
 
 ### Local RAG
 
-RAG is off by default. It needs the `[rag]` extra (faiss, numpy: `uv tool install "llm-worker-pool[rag] @ git+..."` or `pip install -e ".[rag]"`) and a local Ollama; turn it on with `LLM_WORKER_POOL_RAG__ENABLED=true`. Without the extra the server starts with RAG off and logs why.
+RAG is off by default. It needs the `[rag]` extra (faiss, numpy: `uv tool install "copro-mcp[rag] @ git+..."` or `pip install -e ".[rag]"`) and a local Ollama; turn it on with `COPRO_RAG__ENABLED=true`. Without the extra the server starts with RAG off and logs why.
 
 If `file_paths` includes a directory or glob, `rag.enabled` is `true`, and the files' full text would not fit the budget's context window (`num_ctx` minus the 25% reserve), the server embeds them with `rag.embedding_model` via the Ollama at `rag.embedding_endpoint`. A local FAISS store then picks the `top_k` chunks most relevant to the `task`. Below that size the model gets every file verbatim, which is what review needs. If Ollama is unreachable, the call reports `rag_indexing_failed` and falls back to the full text.
 
@@ -286,12 +301,12 @@ python -m pytest tests/integration
 
 The server keeps counters in memory and exposes them through the `get_gateway_stats`
 MCP tool — but reading them that way costs a model round-trip just to look at numbers.
-Every update is therefore also mirrored, atomically, to `~/.llm_worker_pool/stats.json`,
+Every update is therefore also mirrored, atomically, to `~/.copro/stats.json`,
 which anything can read directly:
 
 ```powershell
-worker-stats            # human-readable table
-worker-stats --json     # raw snapshot, for piping into jq
+copro stats            # human-readable table
+copro stats --json     # raw snapshot, for piping into jq
 ```
 
 Tracked: requests, failures, cache hits, **tokens actually spent** split into
@@ -305,7 +320,7 @@ Counters reset when the server restarts, since they live in the server process.
 Every Claude Code session starts its own server process. What one of them learns about a
 key — blocked by a 429 (Retry-After / retryDelay / per-day quota), a token window drained
 per Groq's `x-ratelimit-*` headers, a model that keeps hanging, a breaker quarantine —
-goes to `~/.llm_worker_pool/key_state.json`, and the others skip that key or tier too
+goes to `~/.copro/key_state.json`, and the others skip that key or tier too
 instead of collecting their own 429. A skipped tier says why in `fallback_used`:
 `quota_exhausted_locally` (no key has quota left), `keys_quarantined_locally` (every key
 quarantined by the breaker after repeated failures — connection errors, 5xx) or
@@ -326,47 +341,47 @@ A 429 that says how long the key is locked is retried after exactly that long (o
 on another free key), and given up immediately when the wait would outlast the tier's
 deadline, so the fallback chain moves on.
 
-### Prometheus metrics (`worker-metrics`)
+### Prometheus metrics (`copro metrics`)
 
-Each server instance appends one JSONL line per call (and one per failed tier) to `~/.llm_worker_pool/events.jsonl`. Every line is a single `O_APPEND` write, so several instances (Claude Code, Gemini CLI…) can share the file safely. It rotates to `events.jsonl.1` at `metrics.max_bytes`. Task and response text are never logged unless `logging.debug_log_content` is on. `stats.json` and `/worker` work the same as before.
+Each server instance appends one JSONL line per call (and one per failed tier) to `~/.copro/events.jsonl`. Every line is a single `O_APPEND` write, so several instances (Claude Code, Gemini CLI…) can share the file safely. It rotates to `events.jsonl.1` at `metrics.max_bytes`. Task and response text are never logged unless `logging.debug_log_content` is on. `stats.json` and `/worker` work the same as before.
 
 A separate exporter process turns the log into metrics. It reads only the new bytes on each scrape:
 
 ```bash
 uv pip install -e ".[metrics]"
-worker-metrics                      # http://127.0.0.1:9464/metrics
-curl -s 127.0.0.1:9464/metrics | grep llm_worker_
+copro metrics                      # http://127.0.0.1:9464/metrics
+curl -s 127.0.0.1:9464/metrics | grep copro_
 ```
 
 It is a separate process because MCP runs over stdio and often as several instances at once. An HTTP endpoint inside each instance would fight over the port, and each would only see its own part of the traffic.
 
 | metric | labels |
 |---|---|
-| `llm_worker_requests_total` | provider, model, budget, task_type, outcome |
-| `llm_worker_latency_seconds` (histogram) | provider, budget, outcome |
-| `llm_worker_tokens_total` | provider, kind (prompt/completion/thinking) |
-| `llm_worker_fallback_total` | requested, answered |
-| `llm_worker_errors_total` | provider, code (timeout, http_503, prompt_too_large…) |
-| `llm_worker_warnings_total` | code (fallback_used, output_truncated_at_max_tokens, json_parse_failed, secret_redacted, citation_unverified…) |
-| `llm_worker_guardrail_actions_total` | action |
-| `llm_worker_eval_score` (gauge) | metric, provider, budget, task_type (from `eval_latest.json`) |
+| `copro_requests_total` | provider, model, budget, task_type, outcome |
+| `copro_latency_seconds` (histogram) | provider, budget, outcome |
+| `copro_tokens_total` | provider, kind (prompt/completion/thinking) |
+| `copro_fallback_total` | requested, answered |
+| `copro_errors_total` | provider, code (timeout, http_503, prompt_too_large…) |
+| `copro_warnings_total` | code (fallback_used, output_truncated_at_max_tokens, json_parse_failed, secret_redacted, citation_unverified…) |
+| `copro_guardrail_actions_total` | action |
+| `copro_eval_score` (gauge) | metric, provider, budget, task_type (from `eval_latest.json`) |
 
 `InvocationLogger(sinks=[...])` is a hook for a future tracer such as a self-hosted Langfuse. Nothing is installed for it yet.
 
-## Evaluation (`worker-eval`)
+## Evaluation (`copro eval`)
 
 ragas pulls in `scikit-network`, which has no Python 3.14 wheel yet. So the eval gets its own venv on Python 3.12, and the server's `.venv` stays as it is. Without ragas, `--no-judge` still runs the deterministic metrics.
 
 ```bash
 uv venv .venv-eval --python 3.12
 uv pip install --python .venv-eval\Scripts\python.exe -e ".[eval,dev]"
-.venv-eval\Scripts\worker-eval --arm groq --arm gemini-lite --harness on   # judged run
-worker-eval --arm groq --arm gemini-lite --arm gemini --label baseline        # harness off
-worker-eval --arm groq --arm gemini-lite --harness on --compare evals/reports/<baseline>.json
-worker-eval --compare A.json B.json                                          # diff only
-worker-eval --arm groq --arm gemini-lite --harness on --emit-routing         # measured routing
-worker-eval --arm groq --arm gemini-lite --harness on --repeat 3 --emit-routing   # with run-to-run spread
-worker-eval --from-report NEW.json --gate BASELINE.json                      # regression gate
+.venv-eval\Scripts\copro eval --arm groq --arm gemini-lite --harness on   # judged run
+copro eval --arm groq --arm gemini-lite --arm gemini --label baseline        # harness off
+copro eval --arm groq --arm gemini-lite --harness on --compare evals/reports/<baseline>.json
+copro eval --compare A.json B.json                                          # diff only
+copro eval --arm groq --arm gemini-lite --harness on --emit-routing         # measured routing
+copro eval --arm groq --arm gemini-lite --harness on --repeat 3 --emit-routing   # with run-to-run spread
+copro eval --from-report NEW.json --gate BASELINE.json                      # regression gate
 ```
 
 - **Dataset.** Cases live in `evals/datasets/*.jsonl` (fixtures in `evals/datasets/fixtures/`). Fields: `id, task, task_type, budget, file_paths|context, output_format, json_schema, reference, expected_findings, expected_fields, must_contain, must_not_contain, expect_file_denied`.
@@ -379,9 +394,9 @@ worker-eval --from-report NEW.json --gate BASELINE.json                      # r
 - **Judge.** The judge is `eval.judge_provider` (gemini-lite by default, since gemini-flash was too overloaded to judge on 2026-10-30; override with `--judge-provider`). It is called through the openai client with key rotation, a circuit breaker and a bounded timeout. If the judge's model is also one of the arms, the report flags the self-preference risk.
 - **Deterministic metrics.** `bug_recall` (cited file plus a line within ±3), `citation_valid_rate`, `json_valid`/`json_schema_valid`, `field_accuracy`, `must_contain`, `no_leak`, `file_denied`, fallback/truncation rates, latency p50/p95 and tokens.
 - **Failed calls** (429, timeout) count only towards `success`; quality metrics are averaged over answered cases, so a quota storm does not read as a quality drop.
-- **Routing from eval.** `--emit-routing` writes `src/llm_worker_pool/config/routing_from_eval.yaml`. For each task type it picks the provider with the best primary metric (review: `bug_recall`, extract/classify: `field_accuracy`, summarize/explain: `faithfulness` or `must_contain`, translate: `factual_correctness`). Only providers that answered at least `--min-success` (0.8) of their cases qualify, and they are compared on the cases all of them answered (so a provider cannot win by failing the hard case), then on success, then on latency. Each pick carries its evidence as a comment. A task type moves away from the provider callers get today (hand-written `preferred_provider`, else the budget's provider) only when the winner leads it by more than `--switch-margin` (0.05) and by more than either provider's run-to-run spread; otherwise the line stays commented out. `--repeat N` runs every case N times per arm: a repeated case counts once at the mean of its answered runs, and the spread is how far each provider's mean moved between runs. The file fills `preferred_provider` in the task profiles, and a value written in `task_profiles.yaml` wins. Review the file before committing it.
+- **Routing from eval.** `--emit-routing` writes `src/copro/config/routing_from_eval.yaml`. For each task type it picks the provider with the best primary metric (review: `bug_recall`, extract/classify: `field_accuracy`, summarize/explain: `faithfulness` or `must_contain`, translate: `factual_correctness`). Only providers that answered at least `--min-success` (0.8) of their cases qualify, and they are compared on the cases all of them answered (so a provider cannot win by failing the hard case), then on success, then on latency. Each pick carries its evidence as a comment. A task type moves away from the provider callers get today (hand-written `preferred_provider`, else the budget's provider) only when the winner leads it by more than `--switch-margin` (0.05) and by more than either provider's run-to-run spread; otherwise the line stays commented out. `--repeat N` runs every case N times per arm: a repeated case counts once at the mean of its answered runs, and the spread is how far each provider's mean moved between runs. The file fills `preferred_provider` in the task profiles, and a value written in `task_profiles.yaml` wins. Review the file before committing it.
 - **Regression gate.** `--gate BASELINE.json` exits 1 when an arm's primary metric for a task type drops by more than `--gate-tolerance` (0.05). A drop in `success` is only printed as a note. `--from-report` applies `--emit-routing`/`--gate` to an existing report without calling any model.
-- **Output.** Reports go to `evals/reports/<timestamp>[-label].{json,md}`. Scores are also merged into `~/.llm_worker_pool/eval_latest.json` for the exporter, so a `--case`/`--task-type` subset run only replaces what it measured.
+- **Output.** Reports go to `evals/reports/<timestamp>[-label].{json,md}`. Scores are also merged into `~/.copro/eval_latest.json` for the exporter, so a `--case`/`--task-type` subset run only replaces what it measured.
 
 ### `/worker` slash command in Claude Code
 
@@ -390,10 +405,10 @@ produced by the command itself rather than generated by the model:
 
 ```markdown
 ---
-description: Show LLM Worker Pool usage
-allowed-tools: Bash(worker-stats:*)
+description: Show Copro usage
+allowed-tools: Bash(copro stats:*)
 ---
-!`worker-stats`
+!`copro stats`
 ```
 
 Typing `/worker` prints the current stats. The model only adds a comment when a number

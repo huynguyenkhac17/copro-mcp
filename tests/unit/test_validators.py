@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_worker_pool.domain.validators import (
+from copro.domain.validators import (
     Citation,
     CitationValidator,
     build_json_repair_prompt,

@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from llm_worker_pool.domain.models import GenerationOptions
-from llm_worker_pool.providers.concurrency_provider import ConcurrencyProvider
+from copro.domain.models import GenerationOptions
+from copro.providers.concurrency_provider import ConcurrencyProvider
 from tests.unit.test_delegate_task_use_case import FakeProvider
 
 

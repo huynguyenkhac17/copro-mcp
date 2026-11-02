@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from llm_worker_pool.server import build_server
+from copro.server import build_server
 
 
 def test_build_server_does_not_raise():

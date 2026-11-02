@@ -1,4 +1,4 @@
-from llm_worker_pool.domain.output_parser import OutputParser
+from copro.domain.output_parser import OutputParser
 
 
 def test_parse_plain_json():

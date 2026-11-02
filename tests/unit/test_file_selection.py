@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.domain.file_selection import glob_regex, split_glob, walk_files
-from llm_worker_pool.domain.guardrails import PathDenyList
+from copro.domain.file_context import FileContextResolver
+from copro.domain.file_selection import glob_regex, split_glob, walk_files
+from copro.domain.guardrails import PathDenyList
 
 
 def _tree(root: Path, files: dict[str, str]) -> None:
@@ -204,7 +204,7 @@ async def test_invalid_glob_is_a_warning_not_a_crash(tmp_path: Path):
 def test_read_text_file_treats_mostly_undecodable_bytes_as_binary(tmp_path: Path):
     """A PDF's compressed stream can run past the NUL sniff window; it must not be
     sent as a page of replacement characters."""
-    from llm_worker_pool.domain.file_selection import read_text_file
+    from copro.domain.file_selection import read_text_file
 
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF-1.7\nstream\n" + bytes(range(0x80, 0x100)) * 40)

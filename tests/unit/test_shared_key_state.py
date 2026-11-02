@@ -4,11 +4,11 @@ import json
 
 import pytest
 
-from llm_worker_pool.config.settings import AppConfig
-from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
-from llm_worker_pool.infra.quota_tracker import QuotaTracker
-from llm_worker_pool.infra.shared_key_state import SharedKeyState, key_id
-from llm_worker_pool.providers.registry import ProviderFactory
+from copro.config.settings import AppConfig
+from copro.infra.circuit_breaker import KeyCircuitBreaker
+from copro.infra.quota_tracker import QuotaTracker
+from copro.infra.shared_key_state import SharedKeyState, key_id
+from copro.providers.registry import ProviderFactory
 
 
 class Clock:
@@ -187,7 +187,7 @@ def test_a_held_lock_skips_the_write_quickly_instead_of_stalling(tmp_path):
     # loop; three processes writing at once stalled a call for 1-7 s.
     import time
 
-    from llm_worker_pool.infra import shared_key_state as sks
+    from copro.infra import shared_key_state as sks
 
     path = tmp_path / "key_state.json"
     state = SharedKeyState(path)

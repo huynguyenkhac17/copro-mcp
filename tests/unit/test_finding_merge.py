@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_worker_pool.domain.finding_merge import findings_of, merge_findings
+from copro.domain.finding_merge import findings_of, merge_findings
 
 
 def _f(file: str, line: int, severity: str = "medium", quote: str = "", claim: str = "bug") -> dict:

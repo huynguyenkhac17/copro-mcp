@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from llm_worker_pool.domain.exceptions import InvalidResponseError, ProviderUnavailableError
-from llm_worker_pool.infra import retry
-from llm_worker_pool.infra.retry import with_backoff
+from copro.domain.exceptions import InvalidResponseError, ProviderUnavailableError
+from copro.infra import retry
+from copro.infra.retry import with_backoff
 
 
 class FakeTime:

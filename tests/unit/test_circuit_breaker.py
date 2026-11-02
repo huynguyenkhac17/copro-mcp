@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import pytest
 
-from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
+from copro.infra.circuit_breaker import KeyCircuitBreaker
 
 
 def test_circuit_breaker_disabled():

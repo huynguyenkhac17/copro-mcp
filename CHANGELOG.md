@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-03
+
+### Changed
+- The project is renamed from `llm-worker-pool` to Copro: package `copro-mcp`, module
+  `copro`, MCP server name `copro`, environment prefix `COPRO_`, user directory
+  `~/.copro`, Prometheus metrics `copro_*`.
+- One `copro` command with `serve`, `stats`, `metrics` and `eval` subcommands, plus
+  `copro-mcp` to start the server (`uvx copro-mcp`).
+
+### Deprecated
+- The old names keep working until 0.4.x ends, each with a note on stderr:
+  `LLM_WORKER_POOL_*` variables, `~/.llm_worker_pool` (copied to `~/.copro` on the
+  first start) and the `llm-worker-pool`, `worker-stats`, `worker-metrics` and
+  `worker-eval` commands.
+
 ## [0.3.0] - 2026-11-02
 
 ### Added

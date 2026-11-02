@@ -6,7 +6,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from llm_worker_pool.config.settings import AppConfig
+from copro.config.settings import AppConfig
 
 
 @pytest.fixture(scope="session")

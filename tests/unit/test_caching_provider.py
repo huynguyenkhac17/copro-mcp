@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from llm_worker_pool.domain.models import GenerationOptions, ProviderResponse
-from llm_worker_pool.infra.cache import InMemoryTTLCache
-from llm_worker_pool.providers.caching_provider import CachingProvider
+from copro.domain.models import GenerationOptions, ProviderResponse
+from copro.infra.cache import InMemoryTTLCache
+from copro.providers.caching_provider import CachingProvider
 from tests.unit.test_delegate_task_use_case import FakeProvider
 
 

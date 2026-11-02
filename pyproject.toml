@@ -1,6 +1,6 @@
 [project]
-name = "llm-worker-pool"
-version = "0.3.0"
+name = "copro-mcp"
+version = "0.4.0"
 description = "MCP server that delegates side tasks from Claude Code to a pool of cloud/local LLM workers (Groq, Gemini, Mistral, DeepSeek, OpenRouter, Ollama) with routing, fallback, quota awareness and guardrails"
 readme = "README.md"
 license = "MIT"
@@ -49,10 +49,13 @@ eval = [
 ]
 
 [project.scripts]
-llm-worker-pool = "llm_worker_pool.server:main"
-worker-stats = "llm_worker_pool.cli:main"
-worker-metrics = "llm_worker_pool.metrics_exporter:main"
-worker-eval = "llm_worker_pool.evals.runner:main"
+copro = "copro.commands:run"
+copro-mcp = "copro.server:main"
+# Old names, kept until 0.4.x ends (copro/_legacy.py).
+llm-worker-pool = "copro._legacy:llm_worker_pool"
+worker-stats = "copro._legacy:worker_stats"
+worker-metrics = "copro._legacy:worker_metrics"
+worker-eval = "copro._legacy:worker_eval"
 
 [build-system]
 requires = ["setuptools>=77"]
@@ -64,7 +67,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 # The YAML defaults are read at runtime (config/settings.py): without this a wheel
 # installs the code but not its config, and the server fails on startup.
-llm_worker_pool = ["config/*.yaml"]
+copro = ["config/*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

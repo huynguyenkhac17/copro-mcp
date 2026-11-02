@@ -5,23 +5,23 @@ import logging
 
 import pytest
 
-from llm_worker_pool.application.cross_check_orchestrator import CrossCheckOrchestrator
-from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
-from llm_worker_pool.application.dto import DelegateTaskRequest
-from llm_worker_pool.config.settings import AppConfig, RetryConfig
-from llm_worker_pool.domain.exceptions import (
+from copro.application.cross_check_orchestrator import CrossCheckOrchestrator
+from copro.application.delegate_task_use_case import DelegateTaskUseCase
+from copro.application.dto import DelegateTaskRequest
+from copro.config.settings import AppConfig, RetryConfig
+from copro.domain.exceptions import (
     NoUsableContextError,
     ProviderUnavailableError,
     RequestTooLargeError,
 )
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.domain.models import (
+from copro.domain.file_context import FileContextResolver
+from copro.domain.models import (
     BudgetProfile,
     GenerationOptions,
     ProviderResponse,
     TaskProfile,
 )
-from llm_worker_pool.infra.logging import InvocationLogger
+from copro.infra.logging import InvocationLogger
 
 _SCHEMA = {"type": "object", "required": ["findings"], "properties": {"findings": {"type": "array"}}}
 
@@ -204,7 +204,7 @@ async def test_other_task_types_do_not_cross_check(tmp_path):
 
 @pytest.mark.asyncio
 async def test_merged_review_is_one_conversation_arms_are_not(tmp_path):
-    from llm_worker_pool.application.conversation_store import ConversationStore
+    from copro.application.conversation_store import ConversationStore
 
     full = str(tmp_path / "orders.py")
     groq = ScriptedProvider("groq", {full: [_f(full, 3, "total = price * qty")]})
@@ -291,7 +291,7 @@ async def test_every_batch_failing_is_a_failure(tmp_path):
 @pytest.mark.asyncio
 async def test_review_that_fits_is_one_call_and_keeps_file_warnings(tmp_path):
     groq = ScriptedProvider("groq")
-    from llm_worker_pool.domain.guardrails import PathDenyList
+    from copro.domain.guardrails import PathDenyList
 
     orch, paths = _setup(tmp_path, {"groq": groq, "lite": ScriptedProvider("lite")}, groq_limit=1700,
                          deny_list=PathDenyList())
@@ -336,7 +336,7 @@ async def test_batching_needs_the_findings_contract(tmp_path):
 
 @pytest.mark.asyncio
 async def test_batched_review_is_one_conversation_turn(tmp_path):
-    from llm_worker_pool.application.conversation_store import ConversationStore
+    from copro.application.conversation_store import ConversationStore
 
     files = {f"f{i}.py": ("x = 1\n" * 300) for i in range(3)}
     orch, paths = _setup(tmp_path, {"groq": ScriptedProvider("groq")}, groq_limit=1700, files=files)
@@ -354,7 +354,7 @@ async def test_batched_review_is_one_conversation_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_batches_and_arms_report_progress(tmp_path):
-    from llm_worker_pool.application import progress
+    from copro.application import progress
 
     files = {f"f{i}.py": ("x = 1\n" * 300) for i in range(3)}
     groq = ScriptedProvider("groq")

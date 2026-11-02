@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from llm_worker_pool.domain.file_context import FileContextResolver
+from copro.domain.file_context import FileContextResolver
 
 
 @pytest.mark.asyncio
@@ -198,7 +198,7 @@ async def test_rag_only_when_files_exceed_the_context_window(tmp_path: Path):
 
 
 def test_rag_embeddings_use_ollama_not_the_default_chat_provider():
-    from llm_worker_pool.config.settings import AppConfig
+    from copro.config.settings import AppConfig
 
     config = AppConfig()
     assert config.rag.embedding_endpoint == "http://localhost:11434"

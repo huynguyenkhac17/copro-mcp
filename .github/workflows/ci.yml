@@ -65,7 +65,7 @@ jobs:
           uv venv --python 3.12 .smoke
           uv pip install --python .smoke "mcp>=1.2.0"
           bin="$(uv tool dir --bin)"
-          exe="$bin/llm-worker-pool"
+          exe="$bin/copro-mcp"
           if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
           if [ -x .smoke/bin/python ]; then py=.smoke/bin/python; else py=.smoke/Scripts/python.exe; fi
           "$py" scripts/smoke_mcp_stdio.py "$exe"

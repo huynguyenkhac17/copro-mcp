@@ -6,21 +6,21 @@ import time
 
 import pytest
 
-from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
-from llm_worker_pool.application.dto import DelegateTaskRequest
-from llm_worker_pool.config.settings import (
+from copro.application.delegate_task_use_case import DelegateTaskUseCase
+from copro.application.dto import DelegateTaskRequest
+from copro.config.settings import (
     AppConfig,
     RetryConfig,
 )
-from llm_worker_pool.domain.exceptions import (
+from copro.domain.exceptions import (
     ConfigurationError,
     NoUsableContextError,
     ProviderUnavailableError,
     RequestTooLargeError,
 )
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
-from llm_worker_pool.infra.logging import InvocationLogger
+from copro.domain.file_context import FileContextResolver
+from copro.domain.models import BudgetProfile, GenerationOptions, ProviderResponse
+from copro.infra.logging import InvocationLogger
 
 
 class FakeProvider:
@@ -771,7 +771,7 @@ async def test_budget_default_that_failed_to_start_degrades_to_global_default():
 
 @pytest.mark.asyncio
 async def test_request_too_large_skips_tier_without_retrying():
-    from llm_worker_pool.domain.exceptions import RequestTooLargeError
+    from copro.domain.exceptions import RequestTooLargeError
 
     groq = NamedFakeProvider("groq", responses=[RequestTooLargeError("too big"), _ok("groq")])
     lite = NamedFakeProvider("gemini-lite", responses=[_ok("gemini-lite")])

@@ -6,14 +6,14 @@ from pathlib import Path
 
 import httpx
 
-from llm_worker_pool.cli import render
-from llm_worker_pool.infra.cache import InMemoryTTLCache
-from llm_worker_pool.infra.circuit_breaker import KeyCircuitBreaker
-from llm_worker_pool.infra.stats import GatewayStats, StatsCollector
-from llm_worker_pool.providers.caching_provider import CachingProvider
-from llm_worker_pool.providers.concurrency_provider import ConcurrencyProvider
-from llm_worker_pool.providers.openai_compatible_provider import OpenAICompatibleProvider
-from llm_worker_pool.server import _breaker_stats
+from copro.cli import render
+from copro.infra.cache import InMemoryTTLCache
+from copro.infra.circuit_breaker import KeyCircuitBreaker
+from copro.infra.stats import GatewayStats, StatsCollector
+from copro.providers.caching_provider import CachingProvider
+from copro.providers.concurrency_provider import ConcurrencyProvider
+from copro.providers.openai_compatible_provider import OpenAICompatibleProvider
+from copro.server import _breaker_stats
 
 
 def _wrapped_provider(breaker: KeyCircuitBreaker | None):

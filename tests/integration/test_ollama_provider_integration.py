@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import pytest
 
-from llm_worker_pool.config.settings import AppConfig
-from llm_worker_pool.domain.models import GenerationOptions
-from llm_worker_pool.domain.output_parser import OutputParser
-from llm_worker_pool.providers.ollama_provider import OllamaProvider
+from copro.config.settings import AppConfig
+from copro.domain.models import GenerationOptions
+from copro.domain.output_parser import OutputParser
+from copro.providers.ollama_provider import OllamaProvider
 
 
 @pytest.fixture

@@ -1,8 +1,8 @@
-"""Start an installed `llm-worker-pool` over stdio, as an MCP client would, and check
+"""Start an installed `copro-mcp` over stdio, as an MCP client would, and check
 it answers: three tools listed, get_gateway_stats returns. No API keys are needed
 (cloud providers without a key are skipped), so CI can run it on every OS.
 
-    python scripts/smoke_mcp_stdio.py <path to the llm-worker-pool executable>
+    python scripts/smoke_mcp_stdio.py <path to the copro-mcp executable>
 """
 
 from __future__ import annotations

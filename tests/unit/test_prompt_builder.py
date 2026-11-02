@@ -1,5 +1,5 @@
-from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions
-from llm_worker_pool.domain.prompt_builder import PromptBuilder
+from copro.domain.models import BudgetProfile, GenerationOptions
+from copro.domain.prompt_builder import PromptBuilder
 
 
 def _profile(num_ctx: int = 100, system_prompt: str | None = "Ban la trợ lý.") -> BudgetProfile:

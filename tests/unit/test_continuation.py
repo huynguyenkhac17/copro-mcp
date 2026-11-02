@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from llm_worker_pool.application.conversation_store import ConversationStore, Turn, render_history
-from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
-from llm_worker_pool.application.dto import DelegateTaskRequest
-from llm_worker_pool.domain.exceptions import ConfigurationError
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.domain.guardrails import SecretScanner
-from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, ProviderResponse, TaskProfile
-from llm_worker_pool.infra.logging import InvocationLogger
+from copro.application.conversation_store import ConversationStore, Turn, render_history
+from copro.application.delegate_task_use_case import DelegateTaskUseCase
+from copro.application.dto import DelegateTaskRequest
+from copro.domain.exceptions import ConfigurationError
+from copro.domain.file_context import FileContextResolver
+from copro.domain.guardrails import SecretScanner
+from copro.domain.models import BudgetProfile, GenerationOptions, ProviderResponse, TaskProfile
+from copro.infra.logging import InvocationLogger
 from tests.unit.test_delegate_task_use_case import FakeProvider, _config
 
 
@@ -112,7 +112,7 @@ async def test_unknown_continuation_is_a_clear_error():
 
 @pytest.mark.asyncio
 async def test_failed_follow_up_leaves_the_conversation_unchanged():
-    from llm_worker_pool.domain.exceptions import ProviderUnavailableError
+    from copro.domain.exceptions import ProviderUnavailableError
 
     store = ConversationStore()
     provider = FakeProvider([_answer("a"), ProviderUnavailableError("down"), _answer("c")])
@@ -168,7 +168,7 @@ async def test_no_store_means_no_continuation_id():
 
 def test_store_caps_turns_and_expires(monkeypatch):
     # A fake clock: ttl 0 alone is flaky, Windows' monotonic clock ticks every ~15 ms.
-    from llm_worker_pool.infra import cache
+    from copro.infra import cache
 
     now = [1000.0]
     monkeypatch.setattr(cache.time, "monotonic", lambda: now[0])

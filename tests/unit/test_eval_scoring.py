@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from llm_worker_pool.application.dto import DelegateTaskResult
-from llm_worker_pool.evals.dataset import EvalCase
-from llm_worker_pool.evals.scoring import percentile, score_case
+from copro.application.dto import DelegateTaskResult
+from copro.evals.dataset import EvalCase
+from copro.evals.scoring import percentile, score_case
 
 CONTEXT = "--- file: /r/orders.py ---\n" + "\n".join(f"line{i}" for i in range(1, 41))
 
@@ -57,7 +57,7 @@ def test_must_contain_ignores_unicode_hyphens_and_secret_guarded():
 def test_eval_latest_merges_subset_runs(tmp_path):
     import json
 
-    from llm_worker_pool.evals.runner import update_eval_latest
+    from copro.evals.runner import update_eval_latest
 
     path = tmp_path / "eval_latest.json"
     base = {"metric": "bug_recall", "provider": "groq", "budget": "L3", "task_type": "review"}
@@ -83,7 +83,7 @@ def test_bug_precision_and_agreement_rate():
 
 def test_reports_mask_the_provider_account_id():
     # Groq errors name the organization; reports are committed (2026-11-02).
-    from llm_worker_pool.evals.runner import redact_account_ids
+    from copro.evals.runner import redact_account_ids
 
     error = "Request too large in organization `org_01abcdefghijklmnopqrstuvwx` on TPM"
     assert redact_account_ids(error) == "Request too large in organization `org_REDACTED` on TPM"

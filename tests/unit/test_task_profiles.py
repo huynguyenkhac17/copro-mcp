@@ -7,19 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from llm_worker_pool.application.dto import DelegateTaskRequest
-from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
-from llm_worker_pool.config.settings import ProviderInstanceConfig, load_task_profiles
-from llm_worker_pool.domain.exceptions import ConfigurationError, NoUsableContextError
-from llm_worker_pool.domain.file_context import FileContextResolver
-from llm_worker_pool.domain.guardrails import PathDenyList, SecretScanner
-from llm_worker_pool.domain.models import (
+from copro.application.dto import DelegateTaskRequest
+from copro.application.delegate_task_use_case import DelegateTaskUseCase
+from copro.config.settings import ProviderInstanceConfig, load_task_profiles
+from copro.domain.exceptions import ConfigurationError, NoUsableContextError
+from copro.domain.file_context import FileContextResolver
+from copro.domain.guardrails import PathDenyList, SecretScanner
+from copro.domain.models import (
     BudgetProfile,
     GenerationOptions,
     ProviderResponse,
     TaskProfile,
 )
-from llm_worker_pool.infra.logging import InvocationLogger
+from copro.infra.logging import InvocationLogger
 
 from tests.unit.test_delegate_task_use_case import NamedFakeProvider, _config
 

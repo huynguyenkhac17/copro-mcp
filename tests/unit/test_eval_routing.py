@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from llm_worker_pool.application.dto import DelegateTaskResult
-from llm_worker_pool.config.settings import load_task_profiles
-from llm_worker_pool.evals.dataset import EvalCase, ExpectedFinding
-from llm_worker_pool.evals.routing import gate, render_routing_yaml, routing_table
-from llm_worker_pool.evals.runner import main
-from llm_worker_pool.evals.scoring import score_case
+from copro.application.dto import DelegateTaskResult
+from copro.config.settings import load_task_profiles
+from copro.evals.dataset import EvalCase, ExpectedFinding
+from copro.evals.routing import gate, render_routing_yaml, routing_table
+from copro.evals.runner import main
+from copro.evals.scoring import score_case
 
 
 def _report(summary: dict, stamp: str = "T1") -> dict:
@@ -139,10 +139,10 @@ def test_failed_call_is_not_scored_as_zero_quality():
 async def test_preferred_provider_routes_a_task_type_unless_the_request_names_one():
     import logging
 
-    from llm_worker_pool.application.delegate_task_use_case import DelegateTaskUseCase
-    from llm_worker_pool.application.dto import DelegateTaskRequest
-    from llm_worker_pool.domain.models import BudgetProfile, GenerationOptions, TaskProfile
-    from llm_worker_pool.infra.logging import InvocationLogger
+    from copro.application.delegate_task_use_case import DelegateTaskUseCase
+    from copro.application.dto import DelegateTaskRequest
+    from copro.domain.models import BudgetProfile, GenerationOptions, TaskProfile
+    from copro.infra.logging import InvocationLogger
     from tests.unit.test_delegate_task_use_case import FakeProvider, _config
 
     default, measured = FakeProvider(), FakeProvider()
@@ -253,8 +253,8 @@ def test_winning_default_or_unmeasured_default_needs_no_margin():
 
 
 def test_default_providers_ignore_the_eval_routing_file(tmp_path: Path, monkeypatch):
-    from llm_worker_pool.config.settings import AppConfig
-    from llm_worker_pool.evals.runner import default_providers
+    from copro.config.settings import AppConfig
+    from copro.evals.runner import default_providers
 
     (tmp_path / "task_profiles.yaml").write_text(
         "task_types:\n  review: {default_budget: L3}\n  extract: {preferred_provider: gemini}\n"
@@ -262,7 +262,7 @@ def test_default_providers_ignore_the_eval_routing_file(tmp_path: Path, monkeypa
         encoding="utf-8",
     )
     (tmp_path / "routing_from_eval.yaml").write_text("preferred_provider:\n  review: gemini-lite\n", encoding="ascii")
-    monkeypatch.setenv("LLM_WORKER_POOL_TASK_PROFILES_CONFIG", str(tmp_path / "task_profiles.yaml"))
+    monkeypatch.setenv("COPRO_TASK_PROFILES_CONFIG", str(tmp_path / "task_profiles.yaml"))
     config = AppConfig.model_construct(budget_providers={"L3": "groq"}, default_provider="ollama")
     assert default_providers(config) == {"review": "groq", "extract": "gemini", "summarize": "ollama"}
 
@@ -271,7 +271,7 @@ def test_default_providers_ignore_the_eval_routing_file(tmp_path: Path, monkeypa
 async def test_repeat_runs_every_case_n_times_per_arm(tmp_path: Path, monkeypatch):
     import argparse
 
-    from llm_worker_pool.evals import runner
+    from copro.evals import runner
 
     dataset = tmp_path / "cases.jsonl"
     dataset.write_text(

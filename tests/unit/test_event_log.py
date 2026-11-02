@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from llm_worker_pool.infra.event_log import EventLog, error_code, warning_code
-from llm_worker_pool.infra.logging import InvocationLogger
-from llm_worker_pool.metrics_exporter import EventAggregator, EventLogCollector
+from copro.infra.event_log import EventLog, error_code, warning_code
+from copro.infra.logging import InvocationLogger
+from copro.metrics_exporter import EventAggregator, EventLogCollector
 
 
 def _write_many(path: str, worker: int, count: int) -> None:
@@ -212,13 +212,13 @@ def test_collector_exposes_counters_and_histogram(tmp_path: Path):
     registry.register(EventLogCollector(EventAggregator(path), eval_path))
     text = generate_latest(registry).decode()
 
-    assert 'llm_worker_requests_total{budget="L3",model="lite",outcome="success",provider="gemini-lite",task_type="review"} 1.0' in text
-    assert 'llm_worker_latency_seconds_bucket{budget="L3",le="5.0",outcome="success",provider="gemini-lite"} 1.0' in text
-    assert 'llm_worker_latency_seconds_bucket{budget="L3",le="2.5",outcome="success",provider="gemini-lite"} 0.0' in text
-    assert 'llm_worker_tokens_total{kind="thinking",provider="gemini-lite"} 7.0' in text
-    assert 'llm_worker_fallback_total{answered="gemini-lite",requested="groq"} 1.0' in text
-    assert 'llm_worker_warnings_total{code="fallback_used"} 1.0' in text
-    assert 'llm_worker_guardrail_actions_total{action="secret_redacted"} 1.0' in text
-    assert 'llm_worker_errors_total{code="prompt_too_large",provider="groq"} 1.0' in text
-    assert 'llm_worker_eval_score{budget="L2",metric="faithfulness",provider="groq",task_type="summarize"} 0.8' in text
+    assert 'copro_requests_total{budget="L3",model="lite",outcome="success",provider="gemini-lite",task_type="review"} 1.0' in text
+    assert 'copro_latency_seconds_bucket{budget="L3",le="5.0",outcome="success",provider="gemini-lite"} 1.0' in text
+    assert 'copro_latency_seconds_bucket{budget="L3",le="2.5",outcome="success",provider="gemini-lite"} 0.0' in text
+    assert 'copro_tokens_total{kind="thinking",provider="gemini-lite"} 7.0' in text
+    assert 'copro_fallback_total{answered="gemini-lite",requested="groq"} 1.0' in text
+    assert 'copro_warnings_total{code="fallback_used"} 1.0' in text
+    assert 'copro_guardrail_actions_total{action="secret_redacted"} 1.0' in text
+    assert 'copro_errors_total{code="prompt_too_large",provider="groq"} 1.0' in text
+    assert 'copro_eval_score{budget="L2",metric="faithfulness",provider="groq",task_type="summarize"} 0.8' in text
     assert prometheus_client  # imported for the skip guard
