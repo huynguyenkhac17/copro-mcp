@@ -197,3 +197,14 @@ def test_prompt_builder_wraps_context_and_states_rule():
 def test_prompt_builder_without_context_has_no_fence():
     profile = BudgetProfile(name="L2", description="", options=GenerationOptions(num_ctx=8192))
     assert PromptBuilder().build(task="hi", context=None, profile=profile).user_prompt == "hi"
+
+
+def test_redact_account_ids_covers_groq_and_openai_forms():
+    from copro.domain.guardrails import redact_account_ids
+
+    text = "groq org_01abcdefghijklmnopqrstuvwx, openai org-AbCdEfGhIjKlMnOpQrStUvWx"
+    assert redact_account_ids(text) == "groq org_REDACTED, openai org_REDACTED"
+    # Short words that merely start with "org" are left alone.
+    assert redact_account_ids("see org_chart and org-wide") == "see org_chart and org-wide"
+    assert redact_account_ids(None) is None
+    assert redact_account_ids("") == ""

@@ -18,6 +18,7 @@ from copro.domain.exceptions import (
     RequestTooLargeError,
     ProviderUnavailableError,
 )
+from copro.domain.guardrails import redact_account_ids
 from copro.domain.models import GenerationOptions, ProviderResponse
 from copro.domain.token_estimate import estimate_prompt_tokens
 from copro.infra.circuit_breaker import KeyCircuitBreaker
@@ -300,12 +301,12 @@ class OpenAICompatibleProvider:
                 self._circuit_breaker.record_failure(key, response.status_code)
             if response.status_code >= 500 or response.status_code == 429:
                 raise ProviderUnavailableError(
-                    f"{self._provider_name} returned status {response.status_code}: {response.text[:500]}",
+                    f"{self._provider_name} returned status {response.status_code}: {_error_body(response.text)}",
                     retry_after=retry_after,
                 )
             else:
                 raise InvalidResponseError(
-                    f"{self._provider_name} returned error {response.status_code}: {response.text[:500]}"
+                    f"{self._provider_name} returned error {response.status_code}: {_error_body(response.text)}"
                 )
 
         if self._circuit_breaker:
@@ -353,6 +354,12 @@ class OpenAICompatibleProvider:
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+
+def _error_body(text: str, limit: int = 500) -> str:
+    """The start of an error body for an exception message, account ids masked first
+    (masking after the cut could leave a partial id behind)."""
+    return (redact_account_ids(text) or "")[:limit]
 
 
 def _is_strict_compatible(schema: Any) -> bool:

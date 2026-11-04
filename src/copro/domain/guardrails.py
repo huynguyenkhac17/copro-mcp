@@ -29,6 +29,17 @@ DEFAULT_DENY_GLOBS: tuple[str, ...] = (
 
 _REDACTED = "[REDACTED:{kind}]"
 
+# Groq names the account in its errors ("in organization `org_01...`"), OpenAI uses
+# "org-...". Not a secret, but it identifies the owner, and provider errors travel far:
+# warnings and errors returned to the client (which users paste into issues), logs,
+# eval reports.
+_ACCOUNT_ID = re.compile(r"\borg[_-][0-9A-Za-z]{20,}")
+
+
+def redact_account_ids(text: str | None) -> str | None:
+    """Mask provider account ids (org_REDACTED); None and "" pass through."""
+    return _ACCOUNT_ID.sub("org_REDACTED", text) if text else text
+
 # (kind, pattern, group holding the secret - 0 = whole match)
 _BUILTIN_PATTERNS: tuple[tuple[str, str, int], ...] = (
     ("private_key", r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", 0),

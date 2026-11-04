@@ -527,3 +527,35 @@ def test_no_reasoning_knob_when_the_field_is_not_sent():
         send_reasoning_effort=False,
     )
     assert provider.thinking_option is None
+
+
+@pytest.mark.asyncio
+async def test_provider_errors_mask_the_account_id():
+    # Groq's 413 names the organization; the message becomes a warning returned to
+    # the client, so the id must not survive into it.
+    from copro.domain.exceptions import InvalidResponseError
+
+    body = (
+        '{"error":{"message":"Request too large for model `openai/gpt-oss-120b` in '
+        'organization `org_01abcdefghijklmnopqrstuvwx` service tier `on_demand`"}}'
+    )
+    provider = _make_provider(["k"], lambda request: httpx.Response(413, text=body))
+
+    with pytest.raises(InvalidResponseError) as exc_info:
+        await provider.generate("hi", GenerationOptions())
+
+    message = str(exc_info.value)
+    assert "org_REDACTED" in message
+    assert "org_01abcdefghijklmnopqrstuvwx" not in message
+
+
+@pytest.mark.asyncio
+async def test_an_account_id_cut_by_the_length_limit_is_still_masked():
+    # Masking after the 500-character cut would leave a short, unmatched id prefix.
+    body = "x" * 489 + " org_01abcdefghijklmnopqrstuvwx"
+    provider = _make_provider(["k"], lambda request: httpx.Response(503, text=body))
+
+    with pytest.raises(ProviderUnavailableError) as exc_info:
+        await provider.generate("hi", GenerationOptions())
+
+    assert "org_01abcd" not in str(exc_info.value)

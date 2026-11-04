@@ -22,7 +22,6 @@ import argparse
 import asyncio
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -31,6 +30,7 @@ from typing import Any
 
 from copro.application.dto import DelegateTaskRequest, DelegateTaskResult
 from copro.config.settings import AppConfig
+from copro.domain.guardrails import redact_account_ids
 from copro.domain.validators import split_context_files
 from copro.config.settings import CONFIG_DIR, ROUTING_FROM_EVAL_FILENAME, load_task_profiles
 from copro.evals.dataset import EvalCase, load_cases
@@ -167,15 +167,6 @@ async def _run_case(
         "error": redact_account_ids(result.error),
         "answer": result.raw_text or "",
     }
-
-
-_ACCOUNT_ID = re.compile(r"org_[0-9a-z]{20,}")
-
-
-def redact_account_ids(text: str | None) -> str | None:
-    """Provider errors name the account (Groq: "in organization `org_...`"). Reports
-    are committed, so the id is masked: not a secret, but it identifies the owner."""
-    return _ACCOUNT_ID.sub("org_REDACTED", text) if text else text
 
 
 def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
