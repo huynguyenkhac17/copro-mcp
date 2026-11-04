@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/huynguyenkhac17/copro-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/huynguyenkhac17/copro-mcp/actions/workflows/ci.yml)
 
+[![PyPI](https://img.shields.io/pypi/v/copro-mcp.svg)](https://pypi.org/project/copro-mcp/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-1.2.0+-green.svg)](https://modelcontextprotocol.io/)
 
@@ -81,17 +82,19 @@ mcp/
 
 ## Installation
 
-Install the server as a uv tool, straight from the repository:
+Copro is on [PyPI](https://pypi.org/project/copro-mcp/). Install it as a uv tool:
 
 ```bash
-uv tool install git+https://github.com/huynguyenkhac17/copro-mcp
+uv tool install copro-mcp
 ```
 
 This puts two commands on your PATH: `copro-mcp`, the MCP server, and `copro`, with
 `copro serve` (the same server), `copro stats`, `copro metrics` and `copro eval`.
 `uv tool upgrade copro-mcp` updates it later. Without installing anything,
-`uvx --from git+https://github.com/huynguyenkhac17/copro-mcp copro-mcp` runs it from
-uv's cache.
+`uvx copro-mcp` runs it from uv's cache; `pip install copro-mcp` works too. Extras:
+`copro-mcp[rag]` (local RAG), `copro-mcp[metrics]` (Prometheus exporter),
+`copro-mcp[eval]` (`copro eval`). The latest unreleased code installs with
+`uv tool install git+https://github.com/huynguyenkhac17/copro-mcp`.
 
 Then register it with Claude Code, passing the keys and the directories the server may
 read (`file_paths` is disabled until you name at least one):
@@ -104,8 +107,9 @@ claude mcp add -s user copro \
   -- copro-mcp
 ```
 
-Instead of `-e`, the same variables can go in `~/.copro/.env`, which the
-server reads at startup (see `.env.example`).
+Use `-- uvx copro-mcp` as the command instead to skip the install step. Instead of
+`-e`, the same variables can go in `~/.copro/.env`, which the server reads at
+startup (see `.env.example`).
 
 **From a source checkout** (development):
 
@@ -258,7 +262,7 @@ For example, `review` returns `findings: [{file, line, severity, claim, evidence
 
 ### Local RAG
 
-RAG is off by default. It needs the `[rag]` extra (faiss, numpy: `uv tool install "copro-mcp[rag] @ git+..."` or `pip install -e ".[rag]"`) and a local Ollama; turn it on with `COPRO_RAG__ENABLED=true`. Without the extra the server starts with RAG off and logs why.
+RAG is off by default. It needs the `[rag]` extra (faiss, numpy: `uv tool install "copro-mcp[rag]"` or `pip install -e ".[rag]"`) and a local Ollama; turn it on with `COPRO_RAG__ENABLED=true`. Without the extra the server starts with RAG off and logs why.
 
 If `file_paths` includes a directory or glob, `rag.enabled` is `true`, and the files' full text would not fit the budget's context window (`num_ctx` minus the 25% reserve), the server embeds them with `rag.embedding_model` via the Ollama at `rag.embedding_endpoint`. A local FAISS store then picks the `top_k` chunks most relevant to the `task`. Below that size the model gets every file verbatim, which is what review needs. If Ollama is unreachable, the call reports `rag_indexing_failed` and falls back to the full text.
 
