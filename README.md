@@ -9,7 +9,7 @@ An MCP (Model Context Protocol) server acting as a middleware between Claude Cod
 
 This project is **not a chatbot**. Claude Code remains the ultimate decision-making supervisor; the local models act as specialized "workers" used to compress context (reading multiple files, summarizing, finding bug candidates, initial planning) or handle low/medium effort tasks. This significantly saves Claude's context window and API token usage.
 
-The entire system exposes exactly **one MCP tool**: `delegate_task`. Claude does not need to know which model is running in the background or what specific text generation parameters are used—everything is abstracted behind a clean interface.
+The server exposes three MCP tools: `delegate_task` does the work, `check_job_status` collects the result of an `async_mode` call, and `get_gateway_stats` reports usage. Claude does not need to know which model runs a task or with which generation parameters: it picks a budget (`L1`-`L3`) and, optionally, a `task_type`; routing, fallback, quotas and retries happen behind that interface.
 
 ## Architecture
 
@@ -63,9 +63,13 @@ mcp/
   |---|---|---|---|
   | `groq` | `GROQ_API_KEY` | free tier | [console.groq.com](https://console.groq.com/keys); 8K tokens/minute per organization, prompts over ~6K tokens skip it |
   | `gemini-lite`, `gemini` | `GEMINI_API_KEY` | free tier | [Google AI Studio](https://aistudio.google.com/apikey); quota is per Google Cloud project |
-  | `mistral` | `MISTRAL_API_KEY` | free tier | [console.mistral.ai](https://console.mistral.ai/); low request rate on the free plan |
-  | `deepseek` | `DEEPSEEK_API_KEY` | paid, cheap | [platform.deepseek.com](https://platform.deepseek.com/); 1M context, strong on code; placed after the free tiers |
-  | `openrouter` | `OPENROUTER_API_KEY` | free models | [openrouter.ai](https://openrouter.ai/keys); 50 requests/day (1000 after buying 10 credits) |
+  | `mistral` *(experimental)* | `MISTRAL_API_KEY` | free tier | [console.mistral.ai](https://console.mistral.ai/); low request rate on the free plan |
+  | `deepseek` *(experimental)* | `DEEPSEEK_API_KEY` | paid, cheap | [platform.deepseek.com](https://platform.deepseek.com/); 1M context, strong on code; placed after the free tiers |
+  | `openrouter` *(experimental)* | `OPENROUTER_API_KEY` | free models | [openrouter.ai](https://openrouter.ai/keys); 50 requests/day (1000 after buying 10 credits) |
+
+  *Experimental* providers are configured from their vendors' documentation and covered
+  by unit tests of the request they send, but have not yet been run against the live
+  API or measured with `copro eval`. Reports of what works and what does not are welcome.
 
   A provider whose key is missing is skipped with a warning and dropped from the
   chains; the others keep working. A call routed to it explicitly fails with
@@ -157,7 +161,7 @@ checkout) and then `~/.copro/.env`.
 `default.yaml` declares multiple providers simultaneously. Each provider has a name and a `type` (the implementation class in `providers/registry.py`):
 
 ```yaml
-default_provider: gemini
+default_provider: gemini-lite
 providers:
   ollama:
     type: ollama
@@ -166,7 +170,7 @@ providers:
   gemini:
     type: openai_compatible   # Compatible with Gemini/OpenAI/Groq
     endpoint: https://generativelanguage.googleapis.com/v1beta/openai
-    model: gemini-2.5-flash
+    model: gemini-flash-latest
     api_key_env: GEMINI_API_KEY   # The ENV VAR name containing the key
     # api_key_envs: [GEMINI_API_KEY_1, GEMINI_API_KEY_2]  # optional: round-robin across multiple keys
     # concurrency: 10   # optional: max parallel requests for this provider

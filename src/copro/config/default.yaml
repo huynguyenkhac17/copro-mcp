@@ -97,6 +97,8 @@ providers:
   # --- More vendors, each skipped (with a warning) until its key is set. They sit in
   # the fallback chains below, so adding a key is enough to widen the free quota.
   # Model ids change often: list them with GET <endpoint>/models.
+  # Experimental: configured from the vendors' docs, not yet run against the live
+  # APIs or measured with `copro eval`.
 
   # Mistral La Plateforme. The free "Experiment" plan (phone verification, no card)
   # has low request rates (~2 RPM per third-party trackers, 2026-11; the console's

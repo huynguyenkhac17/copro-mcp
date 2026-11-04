@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format follows
   `~/.copro`, Prometheus metrics `copro_*`.
 - One `copro` command with `serve`, `stats`, `metrics` and `eval` subcommands, plus
   `copro-mcp` to start the server (`uvx copro-mcp`).
+- `copro stats` prints in English.
+- Mistral, DeepSeek and OpenRouter are marked experimental until they have been run
+  against the live APIs.
 
 ### Deprecated
 - The old names keep working until 0.4.x ends, each with a note on stderr:

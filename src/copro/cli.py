@@ -39,7 +39,7 @@ def _fmt_duration(seconds: float) -> str:
 
 def _render_breakers(stats: GatewayStats, now: float) -> list[str]:
     """Only keys that have failed at least once: a healthy pool prints one line."""
-    lines = ["", "  CIRCUIT BREAKER (key theo vị trí trong cấu hình)"]
+    lines = ["", "  CIRCUIT BREAKERS (keys by position in the config)"]
     rows = []
     for provider, keys in sorted(stats.circuit_breakers.items()):
         for label, k in keys.items():
@@ -48,15 +48,15 @@ def _render_breakers(stats: GatewayStats, now: float) -> list[str]:
             # The snapshot is written per request, so is_quarantined may be stale;
             # the wall-clock deadline is not.
             left = k.quarantined_until - now
-            state = f"khóa còn {_fmt_duration(left)}" if left > 0 else "mở"
+            state = f"locked for {_fmt_duration(left)}" if left > 0 else "open"
             rows.append(
                 f"  {provider + '/' + label:<22}{k.total_failures:>6}{k.total_quarantines:>8}"
                 f"{k.total_successes:>8}  {state}"
             )
     if not rows:
-        lines.append("  Chưa key nào lỗi.")
+        lines.append("  No key has failed.")
         return lines
-    lines.append(f"  {'':<22}{'lỗi':>6}{'bị khóa':>8}{'ok':>8}  trạng thái")
+    lines.append(f"  {'':<22}{'fails':>6}{'locks':>8}{'ok':>8}  state")
     return lines + rows
 
 
@@ -66,47 +66,47 @@ def render(stats: GatewayStats, now: float | None = None) -> str:
     add = lines.append
 
     add("=" * 66)
-    add("COPRO — thống kê")
+    add("COPRO - usage")
     add("=" * 66)
     add(f"  Uptime           {_fmt_duration(stats.uptime_seconds)}")
     add(
         f"  Requests         {stats.total_requests}  "
-        f"(thành công {stats.total_success}, lỗi {stats.total_failures})"
+        f"(ok {stats.total_success}, failed {stats.total_failures})"
     )
     add(f"  Cache hit        {stats.total_cached}")
 
     if stats.total_truncated:
         add(
-            f"  ⚠ Bị cắt output  {stats.total_truncated}  "
-            "← câu trả lời không trọn vẹn, nâng budget hoặc chia nhỏ task"
+            f"  ! Truncated      {stats.total_truncated}  "
+            "<- incomplete answers: raise the budget or split the task"
         )
     else:
-        add("  Bị cắt output    0")
+        add("  Truncated        0")
 
     tokens = stats.tokens
     add("")
-    add("  TOKEN ĐÃ TIÊU (không tính cache hit)")
+    add("  TOKENS SPENT (cache hits excluded)")
     add(f"    prompt         {_fmt_int(tokens.prompt):>12}")
     add(f"    completion     {_fmt_int(tokens.completion):>12}")
 
     if tokens.total:
         share = tokens.thinking / tokens.total * 100
-        flag = "  ← đáng chú ý" if share >= 40 else ""
-        add(f"    thinking       {_fmt_int(tokens.thinking):>12}  ({share:.0f}% tổng){flag}")
+        flag = "  <- high" if share >= 40 else ""
+        add(f"    thinking       {_fmt_int(tokens.thinking):>12}  ({share:.0f}% of total){flag}")
     else:
         add(f"    thinking       {_fmt_int(tokens.thinking):>12}")
 
-    add(f"    tổng           {_fmt_int(tokens.total):>12}")
-    add(f"  Token tiết kiệm nhờ cache  {_fmt_int(stats.total_tokens_saved_by_cache)}")
+    add(f"    total          {_fmt_int(tokens.total):>12}")
+    add(f"  Tokens saved by cache  {_fmt_int(stats.total_tokens_saved_by_cache)}")
 
     if not stats.providers:
         add("")
-        add("  Chưa có lời gọi nào được ghi nhận.")
+        add("  No calls recorded yet.")
         return "\n".join(lines)
 
     add("")
-    add("  THEO PROVIDER / BUDGET")
-    add(f"  {'':<22}{'gọi':>6}{'lỗi':>6}{'cắt':>6}{'token':>12}{'ms/lần':>10}")
+    add("  BY PROVIDER / BUDGET")
+    add(f"  {'':<22}{'ok':>6}{'fail':>6}{'trunc':>6}{'tokens':>12}{'ms/call':>10}")
     for name, p in sorted(stats.providers.items()):
         avg = p.total_latency_ms / p.success_count if p.success_count else 0.0
         add(
@@ -128,7 +128,7 @@ def render(stats: GatewayStats, now: float | None = None) -> str:
 
 def _force_utf8_stdout() -> None:
     """Windows consoles default to a legacy codepage (cp1252 here), which cannot
-    encode Vietnamese and would crash on the first accented character. Reconfigure
+    encode the box-drawing characters and would crash on the first one. Reconfigure
     rather than rely on the caller exporting PYTHONIOENCODING."""
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
@@ -144,14 +144,14 @@ def main(argv: list[str] | None = None) -> int:
     # Reads the stats file without loading AppConfig, so migrate here too.
     migrate_user_dir(default_snapshot_path().parent)
     parser = argparse.ArgumentParser(
-        prog="copro stats", description="Xem thống kê của Copro."
+        prog="copro stats", description="Show Copro usage statistics."
     )
-    parser.add_argument("--json", action="store_true", help="in nguyên snapshot JSON")
+    parser.add_argument("--json", action="store_true", help="print the raw JSON snapshot")
     parser.add_argument(
         "--path",
         type=Path,
         default=default_snapshot_path(),
-        help="đường dẫn file stats (mặc định: ~/.copro/stats.json)",
+        help="stats file (default: ~/.copro/stats.json)",
     )
     args = parser.parse_args(argv)
 
@@ -159,9 +159,9 @@ def main(argv: list[str] | None = None) -> int:
         # Not an error worth a stack trace: the server simply has not run since the
         # snapshot feature was added, or has never been started at all.
         print(
-            f"Chưa có file thống kê tại {args.path}\n"
-            "MCP server chưa chạy lần nào kể từ khi bật tính năng ghi snapshot.\n"
-            "Gọi delegate_task một lần rồi thử lại."
+            f"No stats file at {args.path}\n"
+            "The MCP server has not run yet (it writes this file on every call).\n"
+            "Call delegate_task once, then try again."
         )
         return 0
 
@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         raw = json.loads(args.path.read_text(encoding="utf-8"))
         stats = GatewayStats.model_validate(raw)
     except (OSError, ValueError) as exc:
-        print(f"Không đọc được file thống kê {args.path}: {exc}", file=sys.stderr)
+        print(f"Cannot read the stats file {args.path}: {exc}", file=sys.stderr)
         return 1
 
     if args.json:

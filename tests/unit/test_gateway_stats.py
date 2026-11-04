@@ -74,8 +74,8 @@ def test_cli_judges_quarantine_by_deadline_not_stale_flag():
 
     text = render(stats, now=now)
 
-    assert "gemini/key_1" in text and "khóa còn 1m30s" in text
-    assert "gemini/key_2" in text and text.split("gemini/key_2")[1].split("\n")[0].endswith("mở")
+    assert "gemini/key_1" in text and "locked for 1m30s" in text
+    assert "gemini/key_2" in text and text.split("gemini/key_2")[1].split("\n")[0].endswith("open")
     assert "gemini/key_0" not in text
 
 
@@ -84,7 +84,7 @@ def test_cli_healthy_pool_prints_one_line():
         "providers": {"groq": {"success_count": 1}},
         "circuit_breakers": {"groq": {"key_0": {"total_successes": 1}}},
     })
-    assert "Chưa key nào lỗi." in render(stats)
+    assert "No key has failed." in render(stats)
 
 
 def test_failing_breaker_source_never_breaks_recording(tmp_path: Path):
