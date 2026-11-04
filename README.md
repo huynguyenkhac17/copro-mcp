@@ -301,6 +301,19 @@ python -m pytest tests/unit
 python -m pytest tests/integration
 ```
 
+## Releasing
+
+Bump `version` in `pyproject.toml` and `copro/__init__.py`, add the CHANGELOG entry,
+then push a matching tag:
+
+```bash
+git tag v0.4.0 && git push origin v0.4.0
+```
+
+`.github/workflows/publish.yml` checks that the tag matches the version, runs the tests,
+builds, smoke-tests the wheel over MCP stdio and uploads to PyPI through trusted
+publishing (no API token is stored).
+
 ## Usage Stats
 
 The server keeps counters in memory and exposes them through the `get_gateway_stats`

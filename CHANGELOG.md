@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 - Mistral, DeepSeek and OpenRouter are marked experimental until they have been run
   against the live APIs.
 
+### Added
+- Releases are published to PyPI from a `v*` tag by GitHub Actions (trusted
+  publishing, no stored token).
+
 ### Deprecated
 - The old names keep working until 0.4.x ends, each with a note on stderr:
   `LLM_WORKER_POOL_*` variables, `~/.llm_worker_pool` (copied to `~/.copro` on the
