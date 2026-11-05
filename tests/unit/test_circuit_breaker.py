@@ -6,6 +6,14 @@ import pytest
 from copro.infra.circuit_breaker import KeyCircuitBreaker
 
 
+class FakeClock:
+    def __init__(self, now: float = 1000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
 def test_circuit_breaker_disabled():
     cb = KeyCircuitBreaker(enabled=False, failure_threshold=2)
     cb.record_failure("key-1", 429)
@@ -58,12 +66,12 @@ def test_filter_available_keys_skips_quarantined():
 
 
 def test_filter_available_keys_fallback_when_all_quarantined():
-    cb = KeyCircuitBreaker(failure_threshold=1, quarantine_seconds=60.0)
+    clock = FakeClock()
+    cb = KeyCircuitBreaker(failure_threshold=1, quarantine_seconds=60.0, clock=clock)
     keys = ["key-1", "key-2"]
 
     cb.record_failure("key-1", 429)
-    # Simulate key-2 failing a bit later
-    time.sleep(0.01)
+    clock.now += 1.0  # key-2 fails a second later
     cb.record_failure("key-2", 429)
 
     # When all quarantined, returns the one with earliest expiry (key-1)
@@ -72,11 +80,16 @@ def test_filter_available_keys_fallback_when_all_quarantined():
 
 
 def test_quarantine_expires():
-    cb = KeyCircuitBreaker(failure_threshold=1, quarantine_seconds=0.05)
+    # A fake clock, not time.sleep: on Windows before Python 3.13 time.monotonic ticks
+    # every ~15.6 ms, so sleeping 60 ms past a 50 ms quarantine could read as 47 ms.
+    clock = FakeClock()
+    cb = KeyCircuitBreaker(failure_threshold=1, quarantine_seconds=60.0, clock=clock)
     cb.record_failure("key-1", 429)
     assert cb.is_available("key-1") is False
 
-    time.sleep(0.06)
+    clock.now += 59.9
+    assert cb.is_available("key-1") is False
+    clock.now += 0.2
     assert cb.is_available("key-1") is True
 
 
